@@ -9,23 +9,25 @@ LIBRARY_INCLUDES += -I$(STM32USB_PATH)
 # Local flags
 CFLAGS_$(d) =
 
+STM_DIR := AP_HAL_REVOMINI/hardware/STM32_USB_Driver
+
 # Local rules and targets
 cSRCS_$(d) := 
-cSRCS_$(d) += usb_core.c
-cSRCS_$(d) += usb_dcd.c
-cSRCS_$(d) += usb_dcd_int.c
-cSRCS_$(d) += usbd_cdc_core.c
-cSRCS_$(d) += usbd_core.c
-cSRCS_$(d) += usbd_ioreq.c
-cSRCS_$(d) += usbd_req.c
+cSRCS_$(d) += $(STM_DIR)/usb_core.c
+cSRCS_$(d) += $(STM_DIR)/usb_dcd.c
+cSRCS_$(d) += $(STM_DIR)/usb_dcd_int.c
+cSRCS_$(d) += $(STM_DIR)/usbd_cdc_core.c
+cSRCS_$(d) += $(STM_DIR)/usbd_core.c
+cSRCS_$(d) += $(STM_DIR)/usbd_ioreq.c
+cSRCS_$(d) += $(STM_DIR)/usbd_req.c
 
 sSRCS_$(d) := 
 
 cFILES_$(d) := $(cSRCS_$(d):%=$(d)/%)
 sFILES_$(d) := $(sSRCS_$(d):%=$(d)/%)
 
-OBJS_$(d)	:= $(cFILES_$(d):%.c=$(BUILD_PATH)/%.o)
-OBJS_$(d)	+= $(sFILES_$(d):%.s=$(BUILD_PATH)/%.o)
+OBJS_$(d)	:= $(cFILES_$(d):%.c=$(LIBRARIES_PATH)/%.o)
+OBJS_$(d)	+= $(sFILES_$(d):%.s=$(LIBRARIES_PATH)/%.o)
 DEPS_$(d) 	:= $(OBJS_$(d):%.o=%.d)
 
 $(OBJS_$(d)): TGT_CFLAGS := $(CFLAGS_$(d))

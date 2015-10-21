@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_REVOMINI_GPIO_H__
 #define __AP_HAL_REVOMINI_GPIO_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AP_HAL_REVOMINI_Namespace.h"
 #include "gpio_hal.h"
 
@@ -14,7 +14,13 @@
  #define LOW  0x0
 #endif
 
+
 #if CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
+
+#define COPTER_LED_1 106  // Motor or Aux LED PA13
+
+#define BUZZER_PIN 200
+
  # define HAL_GPIO_A_LED_PIN        36  // BLUE
  # define HAL_GPIO_B_LED_PIN        37  // YELLOW
  # define HAL_GPIO_C_LED_PIN        105 // RED

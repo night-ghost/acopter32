@@ -14,7 +14,7 @@
 #ifndef __AP_HAL_REVOMINI_STORAGE_H__
 #define __AP_HAL_REVOMINI_STORAGE_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 #include <hal.h>
 
 class REVOMINI::REVOMINIStorage : public AP_HAL::Storage

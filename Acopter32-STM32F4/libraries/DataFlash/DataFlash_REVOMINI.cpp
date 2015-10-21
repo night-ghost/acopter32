@@ -13,7 +13,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "DataFlash_REVOMINI.h"
 #include <wirish.h>
 
@@ -27,7 +27,7 @@ extern const AP_HAL::HAL& hal;
  # define serialDebug(fmt, args...)
 #endif
 
-#define DF_RESET BOARD_SPI3_CS_DF_PIN // RESET (PB3)
+#define DF_RESET BOARD_SPI3_CS_DF_PIN             // RESET  (PB3)
 
 //Micron M25P16 Serial Flash Embedded Memory 16 Mb, 3V
 #define JEDEC_WRITE_ENABLE           0x06
@@ -65,12 +65,16 @@ bool DataFlash_REVOMINI::_sem_take(uint8_t timeout)
     return _spi_sem->take(timeout);
 }
 
-void DataFlash_REVOMINI::Init(void)
+
+// Public Methods //////////////////////////////////////////////////////////////
+void DataFlash_REVOMINI::Init(const struct LogStructure *structure, uint8_t num_types)
 {
     // init to zero
     df_NumPages = 0;
 
-    hal.gpio->pinMode(DF_RESET,GPIO_OUTPUT);
+//    DataFlash_Class::Init(structure, num_types);
+    
+    hal.gpio->pinMode(DF_RESET,HAL_GPIO_OUTPUT);
     // Reset the chip
     hal.gpio->write(DF_RESET,0);
     hal.scheduler->delay(1);
@@ -204,7 +208,9 @@ void DataFlash_REVOMINI::BufferToPage (uint32_t IntPageAdr)
 
     // release SPI bus for use by other sensors
     _spi->cs_release();
+
     WaitReady();
+
     _spi_sem->give();
 }
 
@@ -241,6 +247,7 @@ bool DataFlash_REVOMINI::BlockRead (uint32_t IntPageAdr, void *pBuffer, uint16_t
     while (size--) {
         *pData++ = _spi->transfer(0x00);
     }
+
     // release SPI bus for use by other sensors
     _spi->cs_release();
 
@@ -255,19 +262,19 @@ bool DataFlash_REVOMINI::BlockRead (uint32_t IntPageAdr, void *pBuffer, uint16_t
 
 void DataFlash_REVOMINI::Flash_Jedec_EraseSector(uint32_t chip_offset)
 {
-    uint8_t cmd[4];
-    cmd[0] = sector_erase;
-    cmd[1] = (chip_offset >> 16) & 0xff;
-    cmd[2] = (chip_offset >>  8) & 0xff;
-    cmd[3] = (chip_offset >>  0) & 0xff;
+	uint8_t cmd[4];
+	cmd[0] = sector_erase;
+	cmd[1] = (chip_offset >> 16) & 0xff;
+	cmd[2] = (chip_offset >>  8) & 0xff;
+	cmd[3] = (chip_offset >>  0) & 0xff;
 
-    Flash_Jedec_WriteEnable();
+	Flash_Jedec_WriteEnable();
 
-    _spi->cs_assert();
+	_spi->cs_assert();
 
-    _spi->transfer(cmd, sizeof(cmd));
+	_spi->transfer(cmd, sizeof(cmd));
 
-    _spi->cs_release();
+	_spi->cs_release();
 
 }
 

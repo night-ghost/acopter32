@@ -1,6 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
 #include "UARTDriver.h"
@@ -16,6 +16,8 @@
 #include <termios.h>
 #include <drivers/drv_hrt.h>
 #include <assert.h>
+#include <AP_HAL/utility/RingBuffer.h>
+#include "GPIO.h"
 
 using namespace PX4;
 
@@ -25,9 +27,11 @@ PX4UARTDriver::PX4UARTDriver(const char *devpath, const char *perf_name) :
 	_devpath(devpath),
     _fd(-1),
     _baudrate(57600),
-    _perf_uart(perf_alloc(PC_ELAPSED, perf_name)),
     _initialised(false),
-    _in_timer(false)
+    _in_timer(false),
+    _perf_uart(perf_alloc(PC_ELAPSED, perf_name)),
+    _os_start_auto_space(-1),
+    _flow_control(FLOW_CONTROL_DISABLE)
 {
 }
 
@@ -40,14 +44,25 @@ extern const AP_HAL::HAL& hal;
 
 void PX4UARTDriver::begin(uint32_t b, uint16_t rxS, uint16_t txS) 
 {
+    if (strcmp(_devpath, "/dev/null") == 0) {
+        // leave uninitialised
+        return;
+    }
+
+    uint16_t min_tx_buffer = 1024;
+    uint16_t min_rx_buffer = 512;
+    if (strcmp(_devpath, "/dev/ttyACM0") == 0) {
+        min_tx_buffer = 4096;
+        min_rx_buffer = 1024;
+    }
     // on PX4 we have enough memory to have a larger transmit and
     // receive buffer for all ports. This means we don't get delays
     // while waiting to write GPS config packets
-    if (txS < 512) {
-        txS = 512;
+    if (txS < min_tx_buffer) {
+        txS = min_tx_buffer;
     }
-    if (rxS < 512) {
-        rxS = 512;
+    if (rxS < min_rx_buffer) {
+        rxS = min_rx_buffer;
     }
 
     /*
@@ -107,11 +122,50 @@ void PX4UARTDriver::begin(uint32_t b, uint16_t rxS, uint16_t txS)
 		// disable LF -> CR/LF
 		t.c_oflag &= ~ONLCR;
 		tcsetattr(_fd, TCSANOW, &t);
+
+        // separately setup IFLOW if we can. We do this as a 2nd call
+        // as if the port has no RTS pin then the tcsetattr() call
+        // will fail, and if done as one call then it would fail to
+        // set the baudrate.
+		tcgetattr(_fd, &t);
+		t.c_cflag |= CRTS_IFLOW;
+		tcsetattr(_fd, TCSANOW, &t);
 	}
 
     if (_writebuf_size != 0 && _readbuf_size != 0 && _fd != -1) {
+        if (!_initialised) {
+            if (strcmp(_devpath, "/dev/ttyACM0") == 0) {
+                ((PX4GPIO *)hal.gpio)->set_usb_connected();
+            }
+            ::printf("initialised %s OK %u %u\n", _devpath, 
+                     (unsigned)_writebuf_size, (unsigned)_readbuf_size);
+        }
         _initialised = true;
     }
+    _uart_owner_pid = getpid();
+
+}
+
+void PX4UARTDriver::set_flow_control(enum flow_control fcontrol)
+{
+	if (_fd == -1) {
+        return;
+    }
+    struct termios t;
+    tcgetattr(_fd, &t);
+    // we already enabled CRTS_IFLOW above, just enable output flow control
+    if (fcontrol != FLOW_CONTROL_DISABLE) {
+        t.c_cflag |= CRTSCTS;
+    } else {
+        t.c_cflag &= ~CRTSCTS;
+    }
+    tcsetattr(_fd, TCSANOW, &t);
+    if (fcontrol == FLOW_CONTROL_AUTO) {
+        // reset flow control auto state machine
+        _total_written = 0;
+        _first_write_time = 0;
+    }
+    _flow_control = fcontrol;
 }
 
 void PX4UARTDriver::begin(uint32_t b) 
@@ -135,7 +189,7 @@ void PX4UARTDriver::try_initialise(void)
         return;
     }
     _last_initialise_attempt_ms = hal.scheduler->millis();
-    if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_ARMED) {
+    if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_ARMED || !hal.util->get_soft_armed()) {
         begin(0);
     }
 }
@@ -180,15 +234,6 @@ void PX4UARTDriver::set_blocking_writes(bool blocking)
 bool PX4UARTDriver::tx_pending() { return false; }
 
 /*
-  buffer handling macros
- */
-#define BUF_AVAILABLE(buf) ((buf##_head > (_tail=buf##_tail))? (buf##_size - buf##_head) + _tail: _tail - buf##_head)
-#define BUF_SPACE(buf) (((_head=buf##_head) > buf##_tail)?(_head - buf##_tail) - 1:((buf##_size - buf##_tail) + _head) - 1)
-#define BUF_EMPTY(buf) (buf##_head == buf##_tail)
-#define BUF_ADVANCETAIL(buf, n) buf##_tail = (buf##_tail + n) % buf##_size
-#define BUF_ADVANCEHEAD(buf, n) buf##_head = (buf##_head + n) % buf##_size
-
-/*
   return number of bytes available to be read from the buffer
  */
 int16_t PX4UARTDriver::available() 
@@ -220,6 +265,9 @@ int16_t PX4UARTDriver::txspace()
 int16_t PX4UARTDriver::read() 
 { 
 	uint8_t c;
+    if (_uart_owner_pid != getpid()){
+        return -1;
+    }
     if (!_initialised) {
         try_initialise();
         return -1;
@@ -240,12 +288,11 @@ int16_t PX4UARTDriver::read()
  */
 size_t PX4UARTDriver::write(uint8_t c) 
 { 
-    if (!_initialised) {
-        try_initialise();
+    if (_uart_owner_pid != getpid()){
         return 0;
     }
-    if (hal.scheduler->in_timerprocess()) {
-        // not allowed from timers
+    if (!_initialised) {
+        try_initialise();
         return 0;
     }
     uint16_t _head;
@@ -266,14 +313,13 @@ size_t PX4UARTDriver::write(uint8_t c)
  */
 size_t PX4UARTDriver::write(const uint8_t *buffer, size_t size)
 {
+    if (_uart_owner_pid != getpid()){
+        return 0;
+    }
 	if (!_initialised) {
         try_initialise();
 		return 0;
 	}
-    if (hal.scheduler->in_timerprocess()) {
-        // not allowed from timers
-        return 0;
-    }
 
     if (!_nonblocking_writes) {
         /*
@@ -328,8 +374,34 @@ int PX4UARTDriver::_write_fd(const uint8_t *buf, uint16_t n)
 
     // the FIONWRITE check is to cope with broken O_NONBLOCK behaviour
     // in NuttX on ttyACM0
+
+    // FIONWRITE is also used for auto flow control detection
+    // Assume output flow control is not working if:
+    //     port is configured for auto flow control
+    // and this is not the first write since flow control turned on
+    // and no data has been removed from the buffer since flow control turned on
+    // and more than .5 seconds elapsed after writing a total of > 5 characters
+    //
+    
     int nwrite = 0;
+
     if (ioctl(_fd, FIONWRITE, (unsigned long)&nwrite) == 0) {
+        if (_flow_control == FLOW_CONTROL_AUTO) {
+            if (_first_write_time == 0) {
+                if (_total_written == 0) {
+                    // save the remaining buffer bytes for comparison next write
+                    _os_start_auto_space = nwrite;
+                }
+            } else {
+                if (_os_start_auto_space - nwrite + 1 >= _total_written &&
+                    (hal.scheduler->micros64() - _first_write_time) > 500*1000UL) {
+                    // it doesn't look like hw flow control is working
+                    ::printf("disabling flow control on %s _total_written=%u\n", 
+                             _devpath, (unsigned)_total_written);
+                    set_flow_control(FLOW_CONTROL_DISABLE);
+                }
+            }
+        }
         if (nwrite > n) {
             nwrite = n;
         }
@@ -340,15 +412,20 @@ int PX4UARTDriver::_write_fd(const uint8_t *buf, uint16_t n)
 
     if (ret > 0) {
         BUF_ADVANCEHEAD(_writebuf, ret);
-        _last_write_time = hrt_absolute_time();
+        _last_write_time = hal.scheduler->micros64();
+        _total_written += ret;
+        if (! _first_write_time && _total_written > 5) {
+            _first_write_time = _last_write_time;
+        }
         return ret;
     }
 
-    if (hrt_absolute_time() - _last_write_time > 2000) {
+    if (hal.scheduler->micros64() - _last_write_time > 2000 &&
+        _flow_control == FLOW_CONTROL_DISABLE) {
 #if 0
         // this trick is disabled for now, as it sometimes blocks on
         // re-opening the ttyACM0 port, which would cause a crash
-        if (hrt_absolute_time() - _last_write_time > 2000000) {
+        if (hal.scheduler->micros64() - _last_write_time > 2000000) {
             // we haven't done a successful write for 2 seconds - try
             // reopening the port        
             _initialised = false;
@@ -361,11 +438,11 @@ int PX4UARTDriver::_write_fd(const uint8_t *buf, uint16_t n)
                 return n;
             }
             
-            _last_write_time = hrt_absolute_time();
+            _last_write_time = hal.scheduler->micros64();
             _initialised = true;
         }
 #else
-        _last_write_time = hrt_absolute_time();
+        _last_write_time = hal.scheduler->micros64();
 #endif
         // we haven't done a successful write for 2ms, which means the 
         // port is running at less than 500 bytes/sec. Start
@@ -398,6 +475,7 @@ int PX4UARTDriver::_read_fd(uint8_t *buf, uint16_t n)
     }
     if (ret > 0) {
         BUF_ADVANCETAIL(_readbuf, ret);
+        _total_read += ret;
     }
     return ret;
 }
@@ -414,21 +492,26 @@ void PX4UARTDriver::_timer_tick(void)
 
     if (!_initialised) return;
 
+    // don't try IO on a disconnected USB port
+    if (strcmp(_devpath, "/dev/ttyACM0") == 0 && !hal.gpio->usb_connected()) {
+        return;
+    }
+
     _in_timer = true;
 
     // write any pending bytes
     uint16_t _tail;
     n = BUF_AVAILABLE(_writebuf);
     if (n > 0) {
+        uint16_t n1 = _writebuf_size - _writebuf_head;
         perf_begin(_perf_uart);
-        if (_tail > _writebuf_head) {
+        if (n1 >= n) {
             // do as a single write
             _write_fd(&_writebuf[_writebuf_head], n);
         } else {
             // split into two writes
-            uint16_t n1 = _writebuf_size - _writebuf_head;
             int ret = _write_fd(&_writebuf[_writebuf_head], n1);
-            if (ret == n1 && n != n1) {
+            if (ret == n1 && n > n1) {
                 _write_fd(&_writebuf[_writebuf_head], n - n1);                
             }
         }
@@ -439,16 +522,16 @@ void PX4UARTDriver::_timer_tick(void)
     uint16_t _head;
     n = BUF_SPACE(_readbuf);
     if (n > 0) {
+        uint16_t n1 = _readbuf_size - _readbuf_tail;
         perf_begin(_perf_uart);
-        if (_readbuf_tail < _head) {
+        if (n1 >= n) {
             // one read will do
             assert(_readbuf_tail+n <= _readbuf_size);
             _read_fd(&_readbuf[_readbuf_tail], n);
         } else {
-            uint16_t n1 = _readbuf_size - _readbuf_tail;
             assert(_readbuf_tail+n1 <= _readbuf_size);
             int ret = _read_fd(&_readbuf[_readbuf_tail], n1);
-            if (ret == n1 && n != n1) {
+            if (ret == n1 && n > n1) {
                 assert(_readbuf_tail+(n-n1) <= _readbuf_size);
                 _read_fd(&_readbuf[_readbuf_tail], n - n1);                
             }

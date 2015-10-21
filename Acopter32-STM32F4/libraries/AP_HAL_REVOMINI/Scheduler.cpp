@@ -4,7 +4,7 @@
 #include <timer.h>
 #include <HardwareTimer.h>
 #include <systick.h>
-#include <AP_Notify.h>
+#include <AP_Notify/AP_Notify.h>
 
 using namespace REVOMINI;
 
@@ -89,6 +89,35 @@ uint32_t REVOMINIScheduler::micros() {
     return res;
 #undef US_PER_MS
 }
+
+uint64_t REVOMINIScheduler::millis64()
+{
+    return systick_uptime();
+}
+uint64_t REVOMINIScheduler::micros64()
+{
+    uint64 fms, lms;
+    uint32 cycle_cnt;
+    uint64 res;
+    do {
+        // make sure millis() return the same value before and after
+        // getting the systick count
+        fms = systick_uptime();
+        cycle_cnt = systick_get_count();
+        lms = systick_uptime();
+    } while (lms != fms);
+
+#define US_PER_MS               1000
+    /* SYSTICK_RELOAD_VAL is 1 less than the number of cycles it
+       actually takes to complete a SysTick reload */
+    res = (fms * US_PER_MS) +
+        (SYSTICK_RELOAD_VAL + 1 - cycle_cnt) / CYCLES_PER_MICROSECOND;
+
+    return res;
+#undef US_PER_MS
+
+}
+
 
 void REVOMINIScheduler::delay_microseconds(uint16_t us)
 {
@@ -195,7 +224,7 @@ void REVOMINIScheduler::_run_timer_procs(bool called_from_isr) {
     if (!_timer_suspended) {
         // now call the timer based drivers
         for (int i = 0; i < _num_timer_procs; i++) {
-            if (_timer_proc[i] != NULL) {
+            if (_timer_proc[i]) {
                 _timer_proc[i]();
             }
         }

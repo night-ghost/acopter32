@@ -35,7 +35,7 @@
  *       Properties:
  *
  */
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "DataFlash_APM2.h"
 
 extern const AP_HAL::HAL& hal;
@@ -87,12 +87,13 @@ bool DataFlash_APM1::_sem_take(uint8_t timeout)
 
 
 // Public Methods //////////////////////////////////////////////////////////////
-void DataFlash_APM1::Init(void)
+void DataFlash_APM1::Init(const struct LogStructure *structure, uint8_t num_types)
 {
+    DataFlash_Backend::Init(structure, num_types);
     // init to zero
     df_NumPages = 0;
 
-    hal.gpio->pinMode(DF_RESET,GPIO_OUTPUT);
+    hal.gpio->pinMode(DF_RESET,HAL_GPIO_OUTPUT);
     // Reset the chip
     hal.gpio->write(DF_RESET,0);
     hal.scheduler->delay(1);

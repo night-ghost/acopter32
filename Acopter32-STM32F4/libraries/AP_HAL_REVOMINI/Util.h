@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_REVOMINI_UTIL_H__
 #define __AP_HAL_REVOMINI_UTIL_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AP_HAL_REVOMINI_Namespace.h"
 
 class REVOMINI::REVOMINIUtil : public AP_HAL::Util {

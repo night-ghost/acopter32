@@ -47,38 +47,21 @@
 #ifndef __AP_GPS_NMEA_H__
 #define __AP_GPS_NMEA_H__
 
-#include <AP_HAL.h>
-#include "GPS.h"
-#include <AP_Progmem.h>
-
+#include "AP_GPS.h"
 
 /// NMEA parser
 ///
-class AP_GPS_NMEA : public GPS
+class AP_GPS_NMEA : public AP_GPS_Backend
 {
 public:
-	AP_GPS_NMEA(void) : 
-	GPS(),
-	_parity(0),
-	_is_checksum_term(false),
-	_sentence_type(0),
-	_term_number(0),
-	_term_offset(0),
-	_gps_data_good(false)
-		{}
-
-    /// Perform a (re)initialisation of the GPS; sends the
-    /// protocol configuration messages.
-    ///
-    virtual void        init(AP_HAL::UARTDriver *s, enum GPS_Engine_Setting nav_setting = GPS_ENGINE_NONE);
+	AP_GPS_NMEA(AP_GPS &_gps, AP_GPS::GPS_State &_state, AP_HAL::UARTDriver *_port);
 
     /// Checks the serial receive buffer for characters,
     /// attempts to parse NMEA data and updates internal state
     /// accordingly.
-    ///
-    virtual bool        read();
+    bool        read();
 
-	static bool _detect(uint8_t data);
+	static bool _detect(struct NMEA_detect_state &state, uint8_t data);
 
 private:
     /// Coding for the GPS sentences that the parser handles
@@ -110,15 +93,15 @@ private:
     /// @returns		The value expressed by the string in _term,
     ///					multiplied by 100.
     ///
-    uint32_t    _parse_decimal();
+    uint32_t    _parse_decimal_100();
 
     /// Parses the current term as a NMEA-style degrees + minutes
     /// value with up to four decimal digits.
     ///
-    /// This gives a theoretical resolution limit of around 18cm.
+    /// This gives a theoretical resolution limit of around 1cm.
     ///
     /// @returns		The value expressed by the string in _term,
-    ///					multiplied by 10000.
+    ///					multiplied by 1e7.
     ///
     uint32_t    _parse_degrees();
 
@@ -131,6 +114,9 @@ private:
     /// @returns		True if completing the term has resulted in
     ///					an update to the GPS state.
     bool                        _term_complete();
+
+    /// return true if we have a new set of NMEA messages
+    bool _have_new_message(void);
 
     uint8_t _parity;                                                    ///< NMEA message checksum accumulator
     bool _is_checksum_term;                                     ///< current term is the checksum
@@ -150,8 +136,12 @@ private:
     int32_t _new_altitude;                                      ///< altitude parsed from a term
     int32_t _new_speed;                                                 ///< speed parsed from a term
     int32_t _new_course;                                        ///< course parsed from a term
-    int16_t _new_hdop;                                                  ///< HDOP parsed from a term
+    uint16_t _new_hdop;                                                 ///< HDOP parsed from a term
     uint8_t _new_satellite_count;                       ///< satellite count parsed from a term
+
+    uint32_t _last_GPRMC_ms = 0;
+    uint32_t _last_GPGGA_ms = 0;
+    uint32_t _last_GPVTG_ms = 0;
 
     /// @name	Init strings
     ///			In ::init, an attempt is made to configure the GPS
@@ -169,6 +159,8 @@ private:
     static const prog_char _gpgga_string[];
     static const prog_char _gpvtg_string[];
     //@}
+
+    static const prog_char _initialisation_blob[];
 };
 
 #endif // __AP_GPS_NMEA_H__

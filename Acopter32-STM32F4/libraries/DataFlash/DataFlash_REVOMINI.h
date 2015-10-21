@@ -6,7 +6,7 @@
 #ifndef __DATAFLASH_REVOMINI_H__
 #define __DATAFLASH_REVOMINI_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "DataFlash.h"
 
 // flash size
@@ -31,7 +31,7 @@ private:
     bool	      _sem_take(uint8_t timeout);
 
 public:
-    void        Init();
+    void        Init(const struct LogStructure *structure, uint8_t num_types);
     void        ReadManufacturerID();
     bool        CardInserted();
     uint8_t     ReadStatus();

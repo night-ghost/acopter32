@@ -1,9 +1,13 @@
-default: all
+default: help
 
 # convenient targets for our supported boards
-sitl: HAL_BOARD = HAL_BOARD_AVR_SITL
+sitl: HAL_BOARD = HAL_BOARD_SITL
 sitl: TOOLCHAIN = NATIVE
 sitl: all
+
+sitl-arm: HAL_BOARD = HAL_BOARD_SITL
+sitl-arm: TOOLCHAIN = RPI
+sitl-arm: all
 
 apm1: HAL_BOARD = HAL_BOARD_APM1
 apm1: TOOLCHAIN = AVR
@@ -12,6 +16,7 @@ apm1: all
 apm1-1280: HAL_BOARD = HAL_BOARD_APM1
 apm1-1280: TOOLCHAIN = AVR
 apm1-1280: all
+apm1-1280: BOARD = mega
 
 apm2: HAL_BOARD = HAL_BOARD_APM2
 apm2: TOOLCHAIN = AVR
@@ -20,173 +25,155 @@ apm2: all
 flymaple: HAL_BOARD = HAL_BOARD_FLYMAPLE
 flymaple: TOOLCHAIN = ARM
 flymaple: all
+flymaple-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
+flymaple-hil: flymaple
 
 vrbrain: HAL_BOARD = HAL_BOARD_VRBRAIN
 vrbrain: TOOLCHAIN = ARM
 vrbrain: all
 
-vrbrain: HAL_BOARD = HAL_BOARD_REVOMINI
-vrbrain: TOOLCHAIN = ARM
-vrbrain: all
+revomini: HAL_BOARD = HAL_BOARD_REVOMINI
+revomini: TOOLCHAIN = ARM
+revomini: all
 
 linux: HAL_BOARD = HAL_BOARD_LINUX
 linux: TOOLCHAIN = NATIVE
 linux: all
 
+erle: HAL_BOARD = HAL_BOARD_LINUX
+erle: TOOLCHAIN = BBONE
+erle: all
+
+zynq: HAL_BOARD = HAL_BOARD_LINUX
+zynq: TOOLCHAIN = ZYNQ
+zynq: all
+zynq-hil: EXTRAFLAGS += "-DHILMODE=HIL_MODE_ATTITUDE -DHIL_MODE=HIL_MODE_SENSORS "
+zynq-hil : zynq
+
+pxf: HAL_BOARD = HAL_BOARD_LINUX
+pxf: TOOLCHAIN = BBONE
+pxf: all
+
+bebop: HAL_BOARD = HAL_BOARD_LINUX
+bebop: TOOLCHAIN = BBONE
+bebop: all
+
+navio: HAL_BOARD = HAL_BOARD_LINUX
+navio: TOOLCHAIN = RPI
+navio: all
+
+bbbmini: HAL_BOARD = HAL_BOARD_LINUX
+bbbmini: TOOLCHAIN = BBONE
+bbbmini: all
+
 empty: HAL_BOARD = HAL_BOARD_EMPTY
 empty: TOOLCHAIN = AVR
 empty: all
 
+# cope with HIL targets
+%-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_SENSORS "
+%-hilsensors: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_SENSORS "
 
-nologging: EXTRAFLAGS += "-DLOGGING_ENABLED=DISABLED "
-nologging: all
+# cope with OBC targets
+%-obc: EXTRAFLAGS += "-DOBC_FAILSAFE=ENABLED "
 
-nogps: EXTRAFLAGS += "-DGPS_PROTOCOL=GPS_PROTOCOL_NONE "
-nogps: nologging
+# support debug build
+%-debug: OPTFLAGS = -g -O0
 
-clidisabled-nologging: EXTRAFLAGS += "-DCLI_ENABLED=DISABLED "
-clidisabled-nologging: nologging
+# cope with -nologging
+%-nologging: EXTRAFLAGS += "-DLOGGING_ENABLED=DISABLED "
 
-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-hil: apm1
+# cope with copter and hil targets
+FRAMES = quad tri hexa y6 octa octa-quad heli single coax obc nologging
+BOARDS = apm1 apm2 apm2beta apm1-1280 px4 px4-v1 px4-v2 sitl flymaple linux vrbrain vrbrain-v40 vrbrain-v45 vrbrainv-50 vrbrain-v51 vrbrain-v52 vrubrain-v51 vrubrain-v52 vrhero-v10 erle pxf navio bbbmini
 
-hilsensors: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_SENSORS "
+define frame_template
+$(1)-$(2) : EXTRAFLAGS += "-DFRAME_CONFIG=$(shell echo $(2) | tr a-z A-Z | sed s/-/_/g)_FRAME "
+$(1)-$(2) : $(1)
+$(1)-$(2)-hil : $(1)-$(2)
+$(1)-$(2)-debug : $(1)-$(2)
+$(1)-$(2)-hilsensors : $(1)-$(2)
+$(1)-$(2)-upload : $(1)-$(2)
+$(1)-$(2)-upload : $(1)-upload
+endef
 
-apm1-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-apm1-hil: apm1
+define board_template
+$(1)-hil : $(1)
+$(1)-debug : $(1)
+$(1)-hilsensors : $(1)
+endef
 
-apm2-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-apm2-hil: apm2
-
-apm1-hilsensors: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_SENSORS "
-apm1-hilsensors: apm1
-
-apm2-hilsensors: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_SENSORS "
-apm2-hilsensors: apm2
-
-apm2-nologging: EXTRAFLAGS += "-DLOGGING_ENABLED=DISABLED "
-apm2-nologging: apm2
-
-heli: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
-heli: all
-
-dmp: EXTRAFLAGS += "-DDMP_ENABLED=ENABLED"
-dmp: apm2
-
-
-apm1-quad: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
-apm1-quad: apm1
-
-apm1-quad-hil: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
-apm1-quad-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-apm1-quad-hil: apm1
-
-apm1-tri: EXTRAFLAGS += "-DFRAME_CONFIG=TRI_FRAME "
-apm1-tri: apm1
-
-apm1-hexa: EXTRAFLAGS += "-DFRAME_CONFIG=HEXA_FRAME "
-apm1-hexa: apm1
-
-apm1-y6: EXTRAFLAGS += "-DFRAME_CONFIG=Y6_FRAME "
-apm1-y6: apm1
-
-apm1-octa: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
-apm1-octa: apm1
-
-apm1-octa-quad: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_QUAD_FRAME "
-apm1-octa-quad: apm1
-
-apm1-heli: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
-apm1-heli: apm1
-
-apm1-heli-hil: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
-apm1-heli-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-apm1-heli-hil: apm1
+USED_BOARDS := $(foreach board,$(BOARDS), $(findstring $(board), $(MAKECMDGOALS)))
+USED_FRAMES := $(foreach frame,$(FRAMES), $(findstring $(frame), $(MAKECMDGOALS)))
+#$(warning $(USED_BOARDS))
+#$(warning $(USED_FRAMES))
+# generate targets of the form BOARD-FRAME and BOARD-FRAME-HIL
+$(foreach board,$(USED_BOARDS),$(eval $(call board_template,$(board))))
+$(foreach board,$(USED_BOARDS),$(foreach frame,$(USED_FRAMES),$(eval $(call frame_template,$(board),$(frame)))))
 
 
-apm2-quad: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
-apm2-quad: apm2
+vrbrain-quad: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
+vrbrain-quad: apm2
 
-apm2-quad-hil: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
-apm2-quad-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-apm2-quad-hil: apm2
+vrbrain-quad-hil: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
+vrbrain-quad-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
+vrbrain-quad-hil: vrbrain
 
-apm2-tri: EXTRAFLAGS += "-DFRAME_CONFIG=TRI_FRAME "
-apm2-tri: apm2
+vrbrain-tri: EXTRAFLAGS += "-DFRAME_CONFIG=TRI_FRAME "
+vrbrain-tri: vrbrain
 
-apm2-hexa: EXTRAFLAGS += "-DFRAME_CONFIG=HEXA_FRAME "
-apm2-hexa: apm2
+vrbrain-hexa: EXTRAFLAGS += "-DFRAME_CONFIG=HEXA_FRAME "
+vrbrain-hexa: vrbrain
 
-apm2-y6: EXTRAFLAGS += "-DFRAME_CONFIG=Y6_FRAME "
-apm2-y6: apm2
+vrbrain-y6: EXTRAFLAGS += "-DFRAME_CONFIG=Y6_FRAME "
+vrbrain-y6: vrbrain
 
-apm2-octa: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
-apm2-octa: apm2
+vrbrain-octa: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
+vrbrain-octa: vrbrain
 
-apm2-octa-quad: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_QUAD_FRAME "
-apm2-octa-quad: apm2
+vrbrain-octa-quad: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_QUAD_FRAME "
+vrbrain-octa-quad: vrbrain
 
-apm2-heli: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
-apm2-heli: apm2
+vrbrain-heli: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
+vrbrain-heli: vrbrain
 
-apm2-heli-hil: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
-apm2-heli-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-apm2-heli-hil: apm2
+vrbrain-heli-hil: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
+vrbrain-heli-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
+vrbrain-heli-hil: vrbrain
 
 
-px4-quad: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
-px4-quad: px4
 
-px4-quad-hil: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME -DHIL_MODE=HIL_MODE_ATTITUDE "
-px4-quad-hil: px4
+revomini-quad: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
+revomini-quad: apm2
 
-px4-tri: EXTRAFLAGS += "-DFRAME_CONFIG=TRI_FRAME "
-px4-tri: px4
+revomini-quad-hil: EXTRAFLAGS += "-DFRAME_CONFIG=QUAD_FRAME "
+revomini-quad-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
+revomini-quad-hil: revomini
 
-px4-hexa: EXTRAFLAGS += "-DFRAME_CONFIG=HEXA_FRAME "
-px4-hexa: px4
+revomini-tri: EXTRAFLAGS += "-DFRAME_CONFIG=TRI_FRAME "
+revomini-tri: revomini
 
-px4-y6: EXTRAFLAGS += "-DFRAME_CONFIG=Y6_FRAME "
-px4-y6: px4
+revomini-hexa: EXTRAFLAGS += "-DFRAME_CONFIG=HEXA_FRAME "
+revomini-hexa: revomini
 
-px4-octa: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
-px4-octa: px4
+revomini-y6: EXTRAFLAGS += "-DFRAME_CONFIG=Y6_FRAME "
+revomini-y6: revomini
 
-px4-octa-quad: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_QUAD_FRAME "
-px4-octa-quad: px4
+revomini-octa: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
+revomini-octa: revomini
 
-px4-heli: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
-px4-heli: px4
+revomini-octa-quad: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_QUAD_FRAME "
+revomini-octa-quad: revomini
 
-px4-heli-hil: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME -DHIL_MODE=HIL_MODE_ATTITUDE "
-px4-heli-hil: px4
+revomini-heli: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
+revomini-heli: revomini
 
-px4-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
-px4-hil: px4
-
-px4-hilsensors: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_SENSORS "
-px4-hilsensors: px4
+revomini-heli-hil: EXTRAFLAGS += "-DFRAME_CONFIG=HELI_FRAME "
+revomini-heli-hil: EXTRAFLAGS += "-DHIL_MODE=HIL_MODE_ATTITUDE "
+revomini-heli-hil: revomini
 
 apm2beta: EXTRAFLAGS += "-DAPM2_BETA_HARDWARE "
 apm2beta: apm2
-
-sitl-octa: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
-sitl-octa: sitl
-
-sitl-hexa: EXTRAFLAGS += "-DFRAME_CONFIG=HEXA_FRAME "
-sitl-hexa: sitl
-
-sitl-y6: EXTRAFLAGS += "-DFRAME_CONFIG=OCTA_FRAME "
-sitl-y6: sitl
-
-obc-sitl: EXTRAFLAGS += "-DOBC_FAILSAFE=ENABLED "
-obc-sitl: EXTRAFLAGS += "-DSERIAL_BUFSIZE=512 "
-obc-sitl: sitl
-
-obc: EXTRAFLAGS += "-DOBC_FAILSAFE=ENABLED "
-obc: EXTRAFLAGS += "-DTELEMETRY_UART2=ENABLED "
-obc: EXTRAFLAGS += "-DSERIAL_BUFSIZE=512 "
-obc: apm2
 
 sitl-mount: EXTRAFLAGS += "-DMOUNT=ENABLED"
 sitl-mount: sitl
@@ -200,3 +187,4 @@ etags:
 clean:
 	@rm -fr $(BUILDROOT)
 
+include $(MK_DIR)/modules.mk

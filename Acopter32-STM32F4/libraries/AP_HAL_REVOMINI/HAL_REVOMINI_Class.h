@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_REVOMINI_CLASS_H__
 #define __AP_HAL_REVOMINI_CLASS_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
 #include "AP_HAL_REVOMINI_Namespace.h"

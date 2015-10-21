@@ -9,7 +9,7 @@
 // Please see the notes in FlymaplePortingNotes.txt in this directory for 
 // information about disabling interrupts on Flymaple
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_FLYMAPLE
 
@@ -20,6 +20,12 @@
 #include "FlymapleWirish.h"
 #undef millis
 #undef micros
+
+// Flymaple: Force init to be called *first*, i.e. before static object allocation.
+// Otherwise, statically allocated objects (eg SerialUSB) that need libmaple may fail.
+__attribute__((constructor)) void premain() {
+    init();
+}
 
 // Not declared in any libmaple headers :-(
 extern "C" 
@@ -95,6 +101,18 @@ uint32_t FLYMAPLEScheduler::millis() {
 
 uint32_t FLYMAPLEScheduler::micros() {
     return libmaple_micros();
+}
+
+uint64_t FLYMAPLEScheduler::millis64() {
+    return millis();
+}
+
+uint64_t FLYMAPLEScheduler::micros64() {
+    // this is slow, but solves the problem with logging uint64_t timestamps
+    uint64_t ret = millis();
+    ret *= 1000ULL;
+    ret += micros() % 1000;
+    return ret;
 }
 
 void FLYMAPLEScheduler::delay_microseconds(uint16_t us)
@@ -186,7 +204,7 @@ void FLYMAPLEScheduler::_run_timer_procs(bool called_from_isr)
     if (!_timer_suspended) {
         // now call the timer based drivers
         for (int i = 0; i < _num_timer_procs; i++) {
-            if (_timer_proc[i] != NULL) {
+            if (_timer_proc[i]) {
                 _timer_proc[i]();
             }
         }

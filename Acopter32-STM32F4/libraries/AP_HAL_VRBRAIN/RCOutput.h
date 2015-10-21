@@ -2,56 +2,45 @@
 #ifndef __AP_HAL_VRBRAIN_RCOUTPUT_H__
 #define __AP_HAL_VRBRAIN_RCOUTPUT_H__
 
-#include <AP_HAL_VRBRAIN.h>
-#include <AP_HAL.h>
-#include <timer.h>
+#include "AP_HAL_VRBRAIN.h"
+#include <systemlib/perf_counter.h>
 
-#define VRBRAIN_MAX_OUTPUT_CHANNELS 12
+#define VRBRAIN_NUM_OUTPUT_CHANNELS 16
 
-#define MOTORID1 0
-#define MOTORID2 1
-#define MOTORID3 2
-#define MOTORID4 3
-#define MOTORID5 4
-#define MOTORID6 5
-#define MOTORID7 6
-#define MOTORID8 7
-#define MOTORID9 8
-#define MOTORID10 9
-#define MOTORID11 10
-#define MOTORID12 11
-
-class VRBRAIN::VRBRAINRCOutput : public AP_HAL::RCOutput {
-    void     init(void* is_ppm);
+class VRBRAIN::VRBRAINRCOutput : public AP_HAL::RCOutput
+{
+public:
+    void     init(void* machtnichts);
     void     set_freq(uint32_t chmask, uint16_t freq_hz);
     uint16_t get_freq(uint8_t ch);
     void     enable_ch(uint8_t ch);
-    void     enable_mask(uint32_t chmask);
     void     disable_ch(uint8_t ch);
-    void     disable_mask(uint32_t chmask);
     void     write(uint8_t ch, uint16_t period_us);
     void     write(uint8_t ch, uint16_t* period_us, uint8_t len);
     uint16_t read(uint8_t ch);
     void     read(uint16_t* period_us, uint8_t len);
+    void     set_safety_pwm(uint32_t chmask, uint16_t period_us);
+    void     set_failsafe_pwm(uint32_t chmask, uint16_t period_us);
+    bool     force_safety_on(void);
+    void     force_safety_off(void);
+
+    void _timer_tick(void);
+
 private:
-    void InitDefaultPWM(void);
-    void InitPWM(void);
-    uint32_t _timer_period(uint16_t speed_hz);
+    int _pwm_fd;
 
-    unsigned int output_channel_ch1;
-    unsigned int output_channel_ch2;
-    unsigned int output_channel_ch3;
-    unsigned int output_channel_ch4;
-    unsigned int output_channel_ch5;
-    unsigned int output_channel_ch6;
-    unsigned int output_channel_ch7;
-    unsigned int output_channel_ch8;
-    unsigned int output_channel_ch9;
-    unsigned int output_channel_ch10;
-    unsigned int output_channel_ch11;
-    unsigned int output_channel_ch12;
-    unsigned int output_channel_raw[VRBRAIN_MAX_OUTPUT_CHANNELS];
+    uint16_t _freq_hz;
+    uint16_t _period[VRBRAIN_NUM_OUTPUT_CHANNELS];
+    volatile uint8_t _max_channel;
+    volatile bool _need_update;
+    perf_counter_t  _perf_rcout;
+    uint32_t _last_output;
+    unsigned _servo_count;
 
+    uint32_t _rate_mask;
+    uint16_t _enabled_channels;
+
+    void _init_alt_channels(void);
 };
 
 #endif // __AP_HAL_VRBRAIN_RCOUTPUT_H__

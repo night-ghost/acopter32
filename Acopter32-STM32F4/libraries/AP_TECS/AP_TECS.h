@@ -22,12 +22,12 @@
 #ifndef AP_TECS_H
 #define AP_TECS_H
 
-#include <AP_Math.h>
-#include <AP_AHRS.h>
-#include <AP_Param.h>
-#include <AP_Vehicle.h>
-#include <AP_SpdHgtControl.h>
-#include <DataFlash.h>
+#include <AP_Math/AP_Math.h>
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_Param/AP_Param.h>
+#include <AP_Vehicle/AP_Vehicle.h>
+#include <AP_SpdHgtControl/AP_SpdHgtControl.h>
+#include <DataFlash/DataFlash.h>
 
 class AP_TECS : public AP_SpdHgtControl {
 public:
@@ -50,7 +50,8 @@ public:
                                enum FlightStage flight_stage,
                                int32_t ptchMinCO_cd,
                                int16_t throttle_nudge,
-							   float hgt_afe);
+							   float hgt_afe,
+							   float load_factor);
 
 	// demanded throttle in percentage
 	// should return 0 to 100
@@ -66,11 +67,21 @@ public:
 	// log data on internal state of the controller. Called at 10Hz
 	void log_data(DataFlash_Class &dataflash, uint8_t msgid);
 
+	// return current target airspeed
+	float get_target_airspeed(void) const { return _TAS_dem / _ahrs.get_EAS2TAS(); }
+
+	// return maximum climb rate
+	float get_max_climbrate(void) const { return _maxClimbRate; }
+
+	// return landing sink rate
+	float get_land_sinkrate(void) const { return _land_sink; }
+
 	// this supports the TECS_* user settable parameters
     static const struct AP_Param::GroupInfo var_info[];
 
 	struct PACKED log_TECS_Tuning {
 		LOG_PACKET_HEADER;
+		uint64_t time_us;
 		float hgt;
 		float dhgt;
 		float hgt_dem;
@@ -107,12 +118,21 @@ private:
     AP_Float _minSinkRate;
     AP_Float _maxSinkRate;
     AP_Float _timeConst;
+    AP_Float _landTimeConst;
     AP_Float _ptchDamp;
+    AP_Float _landDamp;
     AP_Float _thrDamp;
     AP_Float _integGain;
     AP_Float _vertAccLim;
 	AP_Float _rollComp;
 	AP_Float _spdWeight;
+	AP_Float _spdWeightLand;
+    AP_Float _landThrottle;
+    AP_Float _landAirspeed;
+    AP_Float _land_sink;
+	AP_Int8  _pitch_max;
+	AP_Int8  _pitch_min;
+	AP_Int8  _land_pitch_max;
 	
 	// throttle demand in the range from 0.0 to 1.0
     float _throttle_dem;
@@ -124,7 +144,7 @@ private:
 	float _integ1_state;
 	
 	// Integrator state 2 - height rate
-	float _integ2_state;
+	float _climb_rate;
 
 	// Integrator state 3 - height
 	float _integ3_state;
@@ -171,6 +191,7 @@ private:
     float _hgt_dem_adj_last;
     float _hgt_rate_dem;
 	float _hgt_dem_prev;
+    float _land_hgt_dem;
 
     // Speed demand after application of rate limiting
     // This is the demand tracked by the TECS control loops
@@ -191,9 +212,6 @@ private:
 
     // climbout mode
     enum FlightStage _flight_stage;
-
-	// throttle demand before limiting
-	float _throttle_dem_unc;
 
 	// pitch demand before limiting
 	float _pitch_dem_unc;
@@ -226,8 +244,11 @@ private:
 	// Time since last update of main TECS loop (seconds)
 	float _DT;
 
+	// counter for demanded sink rate on land final
+	uint8_t _flare_counter;
+
     // Update the airspeed internal state using a second order complementary filter
-    void _update_speed(void);
+    void _update_speed(float load_factor);
 
     // Update the demanded airspeed
     void _update_speed_demand(void);
@@ -261,9 +282,12 @@ private:
 
     // declares a 5point average filter using floats
 	AverageFilterFloat_Size5 _vdot_filter;
+
+	// current time constant
+	float timeConstant(void) const;
 };
 
 #define TECS_LOG_FORMAT(msg) { msg, sizeof(AP_TECS::log_TECS_Tuning),	\
-							   "TECS", "ffffffffffff", "h,dh,h_dem,dh_dem,sp_dem,sp,dsp,ith,iph,th,ph,dsp_dem" }
+							   "TECS", "Qffffffffffff", "TimeUS,h,dh,h_dem,dh_dem,sp_dem,sp,dsp,ith,iph,th,ph,dsp_dem" }
 
 #endif //AP_TECS_H

@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_REVOMINI_UARTDRIVER_H__
 #define __AP_HAL_REVOMINI_UARTDRIVER_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 
 #include <usart.h>
 #include <usb.h>

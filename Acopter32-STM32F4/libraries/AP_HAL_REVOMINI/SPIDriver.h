@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_REVOMINI_SPIDRIVER_H__
 #define __AP_HAL_REVOMINI_SPIDRIVER_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 #include "AP_HAL_REVOMINI_Namespace.h"
 #include "GPIO.h"
 #include "SPIDevices.h"

@@ -1,8 +1,8 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "SPIDevices.h"
 #include "GPIO.h"
 #include "Semaphores.h"
@@ -101,11 +101,25 @@ void REVOMINISPI2DeviceDriver::transfer(const uint8_t *tx, uint16_t len) {
 
 void REVOMINISPI2DeviceDriver::set_bus_speed(REVOMINISPI2DeviceDriver::bus_speed speed)
 {
+/*
     if (speed == REVOMINISPI2DeviceDriver::SPI_SPEED_HIGH) {
 
-    } else {
+	    //init the device
+	    spi_init(_dev);
 
+	    SPIFrequency freq = SPI_9MHZ;
+	    spi_baud_rate baud = determine_baud_rate(freq);
+	    spi_master_enable(_dev, baud, (spi_mode)0, MSBFIRST);
+
+    } else {
+	    //init the device
+	    spi_init(_dev);
+
+	    SPIFrequency freq = SPI_1_125MHZ;
+	    spi_baud_rate baud = determine_baud_rate(freq);
+	    spi_master_enable(_dev, baud, (spi_mode)0, MSBFIRST);
     }
+	*/
 }
 
 

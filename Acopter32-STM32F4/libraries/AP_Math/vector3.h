@@ -51,7 +51,13 @@
 #define VECTOR3_H
 
 #include <math.h>
+#include <float.h>
 #include <string.h>
+
+
+#if defined(MATH_CHECK_INDEXES) && (MATH_CHECK_INDEXES == 1)
+#include <assert.h>
+#endif
 
 template <typename T>
 class Matrix3;
@@ -111,6 +117,23 @@ public:
     // uniform scaling
     Vector3<T> &operator /=(const T num);
 
+    // allow a vector3 to be used as an array, 0 indexed
+    T & operator[](uint8_t i) {
+        T *_v = &x;
+#if defined(MATH_CHECK_INDEXES) && (MATH_CHECK_INDEXES == 1)
+        assert(i >= 0 && i < 3);
+#endif
+        return _v[i];
+    }
+
+    const T & operator[](uint8_t i) const {
+        const T *_v = &x;
+#if defined(MATH_CHECK_INDEXES) && (MATH_CHECK_INDEXES == 1)
+        assert(i >= 0 && i < 3);
+#endif
+        return _v[i];
+    }
+
     // dot product
     T operator *(const Vector3<T> &v) const;
 
@@ -131,6 +154,10 @@ public:
 
     // check if any elements are infinity
     bool is_inf(void) const;
+
+    // check if all elements are zero
+    bool is_zero(void) const { return (fabsf(x) < FLT_EPSILON) && (fabsf(y) < FLT_EPSILON) && (fabsf(z) < FLT_EPSILON); }
+
 
     // rotate by a standard rotation
     void rotate(enum Rotation rotation);
@@ -153,7 +180,7 @@ public:
     // zero the vector
     void zero()
     {
-        x = y = z = 0.0;
+        x = y = z = 0;
     }
 
     // returns the normalized version of this vector
@@ -190,5 +217,8 @@ typedef Vector3<uint16_t>               Vector3ui;
 typedef Vector3<int32_t>                Vector3l;
 typedef Vector3<uint32_t>               Vector3ul;
 typedef Vector3<float>                  Vector3f;
+#if HAL_CPU_CLASS >= HAL_CPU_CLASS_75
+    typedef Vector3<double>                 Vector3d;
+#endif
 
 #endif // VECTOR3_H

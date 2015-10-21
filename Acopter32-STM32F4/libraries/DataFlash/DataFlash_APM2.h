@@ -6,8 +6,8 @@
 #ifndef __DATAFLASH_APM2_H__
 #define __DATAFLASH_APM2_H__
 
-#include <AP_HAL.h>
-#include "DataFlash.h"
+#include <AP_HAL/AP_HAL.h>
+#include "DataFlash_Block.h"
 
 class DataFlash_APM2 : public DataFlash_Block
 {
@@ -32,7 +32,6 @@ private:
     // the data fits within the page, otherwise it will wrap to the
     // start of the page
     bool 		    BlockRead(uint8_t BufferNum, uint16_t IntPageAdr, void *pBuffer, uint16_t size);
-    uint8_t	            BufferRead (uint8_t BufferNum, uint16_t IntPageAdr);
 
     void                    PageErase (uint16_t PageAdr);
     void                    BlockErase (uint16_t BlockAdr);
@@ -45,7 +44,10 @@ private:
     AP_HAL::Semaphore* _spi_sem;
 
 public:
-    void        Init();
+    DataFlash_APM2(DataFlash_Class &front) :
+        DataFlash_Block(front) { }
+
+    void        Init(const struct LogStructure *structure, uint8_t num_types);
     void        ReadManufacturerID();
     bool        CardInserted();
 };

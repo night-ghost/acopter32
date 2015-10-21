@@ -14,12 +14,12 @@
 #ifndef __AP_HAL_REVOMINI_I2CDRIVER_H__
 #define __AP_HAL_REVOMINI_I2CDRIVER_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 #include <i2c.h>
 
 class REVOMINI::REVOMINII2CDriver : public AP_HAL::I2CDriver {
 public:
-    REVOMINII2CDriver(i2c_dev *dev, AP_HAL::Semaphore* semaphore) : _dev(dev),_semaphore(semaphore) {}
+    REVOMINII2CDriver(i2c_dev *dev, AP_HAL::Semaphore* semaphore);
     void begin();
     void end();
     void setTimeout(uint16_t ms){ _timeoutDelay = ms; }

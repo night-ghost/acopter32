@@ -2,8 +2,8 @@
 #ifndef __AP_HAL_REVOMINI_RCOUTPUT_H__
 #define __AP_HAL_REVOMINI_RCOUTPUT_H__
 
-#include <AP_HAL_REVOMINI.h>
-#include <AP_HAL.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
+#include <AP_HAL/AP_HAL.h>
 #include <timer.h>
 
 #define REVOMINI_MAX_OUTPUT_CHANNELS 12

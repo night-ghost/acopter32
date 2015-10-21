@@ -3,12 +3,7 @@
  *       DataFlash.cpp - DataFlash log library generic code
  */
 
-#include <AP_HAL.h>
-#include "wirish.h"
-#include <stm32f4xx.h>
-
-#if CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
-
+#include <AP_HAL/AP_HAL.h>
 #include "DataFlash.h"
 
 extern AP_HAL::HAL& hal;
@@ -16,6 +11,25 @@ extern AP_HAL::HAL& hal;
 // the last page holds the log format in first 4 bytes. Please change
 // this if (and only if!) the low level format changes
 #define DF_LOGGING_FORMAT    0x28122013
+
+
+#if 0 &&  CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
+
+#include "DataFlash.h"
+
+extern AP_HAL::HAL& hal;
+
+/*
+ * TODO DRIVER NEED TO BE FIXED !!!
+ */
+
+// the last page holds the log format in first 4 bytes. Please change
+// this if (and only if!) the low level format changes
+#define DF_LOGGING_FORMAT    0x28122013
+
+#define dfEE_PAGESIZE   256
+volatile uint8_t   dfEEDataNum;
+
 
 // *** DATAFLASH PUBLIC FUNCTIONS ***
 void DataFlash_Block::StartWrite(uint16_t PageAdr)
@@ -123,7 +137,7 @@ void DataFlash_Block::StartRead(uint16_t PageAdr)
     df_Read_BufferIdx = sizeof(ph);
 }
 
-void DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
+bool DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
 {
     while (size > 0) {
         uint16_t n = df_PageSize - df_Read_BufferIdx;
@@ -151,6 +165,7 @@ void DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
             df_Read_BufferIdx = sizeof(ph);
         }
     }
+    return true;
 }
 
 void DataFlash_Block::SetFileNumber(uint16_t FileNumber)
@@ -191,7 +206,7 @@ void DataFlash_Block::Erase_Sectors(uint8_t start, uint8_t end)
 	     LED_RED=1;
 	     LED_GRN = 0;
              _erase_led=1;
-	 }
+	     }
     }
     LED_RED = 1;
     LED_GRN = 1;
@@ -229,17 +244,77 @@ bool DataFlash_Block::NeedErase(void)
     return version != DF_LOGGING_FORMAT;
 }
 
+
+
+int16_t DataFlash_Block::get_log_data_raw(uint16_t log_num, uint16_t page, uint32_t offset, uint16_t len, uint8_t *data)
+{
+    uint16_t data_page_size = df_PageSize - sizeof(struct PageHeader);
+
+    if (offset >= data_page_size) {
+        page += offset / data_page_size;
+        offset = offset % data_page_size;
+        if (page > df_NumPages) {
+            // pages are one based, not zero
+            page = 1 + page - df_NumPages;
+        }
+    }
+    if (log_write_started || df_Read_PageAdr != page) {
+        StartRead(page);
+    }
+
+    df_Read_BufferIdx = offset + sizeof(struct PageHeader);
+    ReadBlock(data, len);
+
+    return (int16_t)len;
+}
+
+/**
+  get data from a log, accounting for adding FMT headers
+ */
+
+int16_t DataFlash_Block::get_log_data(uint16_t log_num, uint16_t page, uint32_t offset, uint16_t len, uint8_t *data)
+{
+    if (offset == 0) {
+        uint8_t header[3];
+        get_log_data_raw(log_num, page, 0, 3, header);
+        adding_fmt_headers = (header[0] != HEAD_BYTE1 || header[1] != HEAD_BYTE2 || header[2] != LOG_FORMAT_MSG);
+    }
+    uint16_t ret = 0;
+
+    if (adding_fmt_headers) {
+        // the log doesn't start with a FMT message, we need to add
+        // them
+        const uint16_t fmt_header_size = _num_types * sizeof(struct log_Format);
+        while (offset < fmt_header_size && len > 0) {
+            struct log_Format pkt;
+            uint8_t t = offset / sizeof(pkt);
+            uint8_t ofs = offset % sizeof(pkt);
+            Log_Fill_Format(&_structures[t], pkt);
+            uint8_t n = sizeof(pkt) - ofs;
+            if (n > len) {
+                n = len;
+            }
+            memcpy(data, ofs + (uint8_t *)&pkt, n);
+            data += n;
+            offset += n;
+            len -= n;
+            ret += n;
+        }
+        offset -= fmt_header_size;
+    }
+
+    if (len > 0) {
+        ret += get_log_data_raw(log_num, page, offset, len, data);
+    }
+
+    return ret;
+}
+
+
 /* END REVOMINI DATA FLASH */
 
-#elif CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
 
-#include "DataFlash.h"
-
-extern AP_HAL::HAL& hal;
-
-// the last page holds the log format in first 4 bytes. Please change
-// this if (and only if!) the low level format changes
-#define DF_LOGGING_FORMAT    0x28122013
+#else
 
 // *** DATAFLASH PUBLIC FUNCTIONS ***
 void DataFlash_Block::StartWrite(uint16_t PageAdr)
@@ -266,7 +341,7 @@ void DataFlash_Block::FinishWrite(void)
 
 void DataFlash_Block::WriteBlock(const void *pBuffer, uint16_t size)
 {
-    if (!CardInserted() || !log_write_started) {
+    if (!CardInserted() || !log_write_started || !_writes_enabled) {
         return;
     }
     while (size > 0) {
@@ -317,6 +392,9 @@ void DataFlash_Block::StartRead(uint16_t PageAdr)
     df_Read_BufferNum = 0;
     df_Read_PageAdr   = PageAdr;
 
+    // disable writing while reading
+    log_write_started = false;
+
     WaitReady();
 
     // copy flash page to buffer
@@ -330,7 +408,7 @@ void DataFlash_Block::StartRead(uint16_t PageAdr)
     df_Read_BufferIdx = sizeof(ph);
 }
 
-void DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
+bool DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
 {
     while (size > 0) {
         uint16_t n = df_PageSize - df_Read_BufferIdx;
@@ -340,7 +418,9 @@ void DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
 
         WaitReady();
 
-        BlockRead(df_Read_BufferNum, df_Read_BufferIdx, pBuffer, n);
+        if (!BlockRead(df_Read_BufferNum, df_Read_BufferIdx, pBuffer, n)) {
+            return false;
+        }
         size -= n;
         pBuffer = (void *)(n + (uintptr_t)pBuffer);
         
@@ -355,13 +435,16 @@ void DataFlash_Block::ReadBlock(void *pBuffer, uint16_t size)
 
             // We are starting a new page - read FileNumber and FilePage
             struct PageHeader ph;
-            BlockRead(df_Read_BufferNum, 0, &ph, sizeof(ph));
+            if (!BlockRead(df_Read_BufferNum, 0, &ph, sizeof(ph))) {
+                return false;
+            }
             df_FileNumber = ph.FileNumber;
             df_FilePage   = ph.FilePage;
 
             df_Read_BufferIdx = sizeof(ph);
         }
     }
+    return true;
 }
 
 void DataFlash_Block::SetFileNumber(uint16_t FileNumber)
@@ -382,6 +465,7 @@ uint16_t DataFlash_Block::GetFilePage()
 
 void DataFlash_Block::EraseAll()
 {
+    log_write_started = false;
     for (uint16_t j = 1; j <= (df_NumPages+1)/8; j++) {
         BlockErase(j);
         if (j%6 == 0) {
@@ -393,6 +477,7 @@ void DataFlash_Block::EraseAll()
     StartWrite(df_NumPages+1);
     uint32_t version = DF_LOGGING_FORMAT;
     log_write_started = true;
+    _writes_enabled = true;
     WriteBlock(&version, sizeof(version));
     log_write_started = false;
     FinishWrite();
@@ -406,9 +491,80 @@ bool DataFlash_Block::NeedErase(void)
 {
     uint32_t version = 0;
     StartRead(df_NumPages+1);
-    ReadBlock(&version, sizeof(version));
+    if (!ReadBlock(&version, sizeof(version))) {
+        return true;
+    }
     StartRead(1);
     return version != DF_LOGGING_FORMAT;
 }
 
+/**
+  get raw data from a log
+ */
+int16_t DataFlash_Block::get_log_data_raw(uint16_t log_num, uint16_t page, uint32_t offset, uint16_t len, uint8_t *data)
+{
+    uint16_t data_page_size = df_PageSize - sizeof(struct PageHeader);
+
+    if (offset >= data_page_size) {
+        page += offset / data_page_size;
+        offset = offset % data_page_size;
+        if (page > df_NumPages) {
+            // pages are one based, not zero
+            page = 1 + page - df_NumPages;
+        }
+    }
+    if (log_write_started || df_Read_PageAdr != page) {
+        StartRead(page);
+    }
+
+    df_Read_BufferIdx = offset + sizeof(struct PageHeader);
+    if (!ReadBlock(data, len)) {
+        return -1;
+    }
+
+    return (int16_t)len;
+}
+
+/**
+  get data from a log, accounting for adding FMT headers
+ */
+int16_t DataFlash_Block::get_log_data(uint16_t log_num, uint16_t page, uint32_t offset, uint16_t len, uint8_t *data)
+{
+    if (offset == 0) {
+        uint8_t header[3];
+        get_log_data_raw(log_num, page, 0, 3, header);
+        adding_fmt_headers = (header[0] != HEAD_BYTE1 || header[1] != HEAD_BYTE2 || header[2] != LOG_FORMAT_MSG);
+    }
+    uint16_t ret = 0;
+
+    if (adding_fmt_headers) {
+        // the log doesn't start with a FMT message, we need to add
+        // them
+        const uint16_t fmt_header_size = _num_types * sizeof(struct log_Format);
+        while (offset < fmt_header_size && len > 0) {
+            struct log_Format pkt;
+            uint8_t t = offset / sizeof(pkt);
+            uint8_t ofs = offset % sizeof(pkt);
+            Log_Fill_Format(&_structures[t], pkt);
+            uint8_t n = sizeof(pkt) - ofs;
+            if (n > len) {
+                n = len;
+            }
+            memcpy(data, ofs + (uint8_t *)&pkt, n);
+            data += n;
+            offset += n;
+            len -= n;
+            ret += n;
+        }
+        offset -= fmt_header_size;
+    }
+
+    if (len > 0) {
+        ret += get_log_data_raw(log_num, page, offset, len, data);
+    }
+
+    return ret;
+}
+
 #endif
+

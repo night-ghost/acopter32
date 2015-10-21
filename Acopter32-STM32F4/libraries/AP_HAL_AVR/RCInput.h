@@ -2,11 +2,19 @@
 #ifndef __AP_HAL_AVR_RC_INPUT_H__
 #define __AP_HAL_AVR_RC_INPUT_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AP_HAL_AVR_Namespace.h"
 
-#define AVR_RC_INPUT_NUM_CHANNELS 8
+#define AVR_RC_INPUT_NUM_CHANNELS 11
 #define AVR_RC_INPUT_MIN_CHANNELS 5     // for ppm sum we allow less than 8 channels to make up a valid packet
+
+/*
+  mininum pulse width in microseconds to signal end of a PPM-SUM
+  frame. This value is chosen to be smaller than the default 3000 sync
+  pulse width for OpenLRSng. Note that this is the total pulse with
+  (typically 300us low followed by a long high pulse)
+ */
+#define AVR_RC_INPUT_MIN_SYNC_PULSE_WIDTH 2700
 
 class AP_HAL_AVR::APM1RCInput : public AP_HAL::RCInput {
 public:
@@ -17,13 +25,17 @@ public:
     void     init(void* isrregistry);
 
     /**
-     * valid_channels():
-     * Return the number of currently valid channels.
-     * Typically 0 (no valid radio channels) or 8 (implementation-defined)
-     * Could be less than or greater than 8 depending on your incoming radio
-     * or PPM stream
+     * Return true if there has been new input since the last read()
+     * call. This call also clears the new_input flag, so once it
+     * returns true it won't return true again until another frame is
+     * received.
      */
-    uint8_t  valid_channels();
+    bool  new_input();
+
+    /**
+     * Return the number of input channels in last read()
+     */
+    uint8_t num_channels();
 
     /**
      * read(uint8_t):
@@ -58,7 +70,8 @@ private:
     static void _timer4_capt_cb(void);
     /* private variables to communicate with input capture isr */
     static volatile uint16_t _pulse_capt[AVR_RC_INPUT_NUM_CHANNELS];
-    static volatile uint8_t  _valid_channels;
+    static volatile uint8_t  _num_channels;
+    static volatile bool     _new_input;
 
     /* override state */
     uint16_t _override[AVR_RC_INPUT_NUM_CHANNELS]; 
@@ -67,7 +80,8 @@ private:
 class AP_HAL_AVR::APM2RCInput : public AP_HAL::RCInput {
     /* Pass in a AP_HAL_AVR::ISRRegistry* as void*. */
     void     init(void* isrregistry);
-    uint8_t  valid_channels();
+    bool  new_input();
+    uint8_t num_channels();
     uint16_t read(uint8_t ch);
     uint8_t  read(uint16_t* periods, uint8_t len);
     bool set_overrides(int16_t *overrides, uint8_t len);
@@ -78,7 +92,8 @@ private:
     static void _timer5_capt_cb(void);
     /* private variables to communicate with input capture isr */
     static volatile uint16_t _pulse_capt[AVR_RC_INPUT_NUM_CHANNELS];
-    static volatile uint8_t  _valid_channels;
+    static volatile uint8_t  _num_channels;
+    static volatile bool  _new_input;
 
     /* override state */
     uint16_t _override[AVR_RC_INPUT_NUM_CHANNELS]; 

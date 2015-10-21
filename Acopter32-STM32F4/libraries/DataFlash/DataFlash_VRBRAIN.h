@@ -6,8 +6,12 @@
 #ifndef __DATAFLASH_VRBRAIN_H__
 #define __DATAFLASH_VRBRAIN_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "DataFlash.h"
+
+#define GPIO_OUTPUT 1
+#define GPIO_INPUT 0
+
 
 class DataFlash_VRBRAIN : public DataFlash_Block
 {

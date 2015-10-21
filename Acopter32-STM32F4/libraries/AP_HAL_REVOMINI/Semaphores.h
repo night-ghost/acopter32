@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_REVOMINI_SEMAPHORES_H__
 #define __AP_HAL_REVOMINI_SEMAPHORES_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 
 class REVOMINI::REVOMINISemaphore : public AP_HAL::Semaphore {
 public:

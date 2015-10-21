@@ -24,8 +24,8 @@
  */
 
 // AVR LibC Includes
-#include <AP_Math.h>
-#include <AP_HAL.h>
+#include <AP_Math/AP_Math.h>
+#include <AP_HAL/AP_HAL.h>
 
 #include "AP_Compass_HMC5843.h"
 
@@ -61,11 +61,42 @@ extern const AP_HAL::HAL& hal;
 #define DataOutputRate_30HZ   0x05
 #define DataOutputRate_75HZ   0x06
 
+// constructor
+AP_Compass_HMC5843::AP_Compass_HMC5843(Compass &compass):
+    AP_Compass_Backend(compass),
+    _retry_time(0),
+    _i2c_sem(NULL),
+    _mag_x(0),
+    _mag_y(0),
+    _mag_z(0),
+    _mag_x_accum(0),
+    _mag_y_accum(0),
+    _mag_z_accum(0),
+    _accum_count(0),
+    _last_accum_time(0),
+    _compass_instance(0),
+    _product_id(0)
+{}
+
+// detect the sensor
+AP_Compass_Backend *AP_Compass_HMC5843::detect(Compass &compass)
+{
+    AP_Compass_HMC5843 *sensor = new AP_Compass_HMC5843(compass);
+    if (sensor == NULL) {
+        return NULL;
+    }
+    if (!sensor->init()) {
+        delete sensor;
+        return NULL;
+    }
+    return sensor;
+}
+
 // read_register - read a register value
 bool AP_Compass_HMC5843::read_register(uint8_t address, uint8_t *value)
 {
     if (hal.i2c->readRegister((uint8_t)COMPASS_ADDRESS, address, value) != 0) {
-        healthy = false;
+        _retry_time = hal.scheduler->millis() + 1000;
         return false;
     }
     return true;
@@ -75,7 +106,7 @@ bool AP_Compass_HMC5843::read_register(uint8_t address, uint8_t *value)
 bool AP_Compass_HMC5843::write_register(uint8_t address, uint8_t value)
 {
     if (hal.i2c->writeRegister((uint8_t)COMPASS_ADDRESS, address, value) != 0) {
-        healthy = false;
+        _retry_time = hal.scheduler->millis() + 1000;
         return false;
     }
     return true;
@@ -87,17 +118,14 @@ bool AP_Compass_HMC5843::read_raw()
     uint8_t buff[6];
 
     if (hal.i2c->readRegisters(COMPASS_ADDRESS, 0x03, 6, buff) != 0) {
-        if (healthy) {
-			hal.i2c->setHighSpeed(false);
-        }
-        healthy = false;
-        _i2c_sem->give();
+        hal.i2c->setHighSpeed(false);
+        _retry_time = hal.scheduler->millis() + 1000;
         return false;
     }
 
     int16_t rx, ry, rz;
     rx = (((int16_t)buff[0]) << 8) | buff[1];
-    if (product_id == AP_COMPASS_TYPE_HMC5883L) {
+    if (_product_id == AP_COMPASS_TYPE_HMC5883L) {
         rz = (((int16_t)buff[2]) << 8) | buff[3];
         ry = (((int16_t)buff[4]) << 8) | buff[5];
     } else {
@@ -127,7 +155,7 @@ void AP_Compass_HMC5843::accumulate(void)
         return;
     }
    uint32_t tnow = hal.scheduler->micros();
-   if (healthy && _accum_count != 0 && (tnow - _last_accum_time) < 13333) {
+   if (_accum_count != 0 && (tnow - _last_accum_time) < 13333) {
 	  // the compass gets new data at 75Hz
 	  return;
    }
@@ -184,6 +212,7 @@ AP_Compass_HMC5843::init()
     uint16_t expected_yz = 715;
     float gain_multiple = 1.0;
 
+    hal.scheduler->suspend_timer_procs();
     hal.scheduler->delay(10);
 
     _i2c_sem = hal.i2c->get_semaphore();
@@ -195,22 +224,28 @@ AP_Compass_HMC5843::init()
     _base_config = 0;
     if (!write_register(ConfigRegA, SampleAveraging_8<<5 | DataOutputRate_75HZ<<2 | NormalOperation) ||
         !read_register(ConfigRegA, &_base_config)) {
-        healthy = false;
         _i2c_sem->give();
+        hal.scheduler->resume_timer_procs();
         return false;
     }
     if ( _base_config == (SampleAveraging_8<<5 | DataOutputRate_75HZ<<2 | NormalOperation)) {
         // a 5883L supports the sample averaging config
-        product_id = AP_COMPASS_TYPE_HMC5883L;
+        _product_id = AP_COMPASS_TYPE_HMC5883L;
         calibration_gain = 0x60;
+        /*
+          note that the HMC5883 datasheet gives the x and y expected
+          values as 766 and the z as 713. Experiments have shown the x
+          axis is around 766, and the y and z closer to 713.
+         */
         expected_x = 766;
         expected_yz  = 713;
-        gain_multiple = 660.0 / 1090;  // adjustment for runtime vs calibration gain
+        gain_multiple = 660.0f / 1090;  // adjustment for runtime vs calibration gain
     } else if (_base_config == (NormalOperation | DataOutputRate_75HZ<<2)) {
-        product_id = AP_COMPASS_TYPE_HMC5843;
+        _product_id = AP_COMPASS_TYPE_HMC5843;
     } else {
         // not behaving like either supported compass type
         _i2c_sem->give();
+        hal.scheduler->resume_timer_procs();
         return false;
     }
 
@@ -218,7 +253,7 @@ AP_Compass_HMC5843::init()
     calibration[1] = 0;
     calibration[2] = 0;
 
-    while ( success == 0 && numAttempts < 20 && good_count < 5)
+    while ( success == 0 && numAttempts < 25 && good_count < 5)
     {
         // record number of attempts at initialisation
         numAttempts++;
@@ -242,13 +277,22 @@ AP_Compass_HMC5843::init()
 
         float cal[3];
 
+        // hal.console->printf_P(PSTR("mag %d %d %d\n"), _mag_x, _mag_y, _mag_z);
         cal[0] = fabsf(expected_x / (float)_mag_x);
         cal[1] = fabsf(expected_yz / (float)_mag_y);
         cal[2] = fabsf(expected_yz / (float)_mag_z);
 
-        if (cal[0] > 0.7f && cal[0] < 1.3f &&
-            cal[1] > 0.7f && cal[1] < 1.3f &&
-            cal[2] > 0.7f && cal[2] < 1.3f) {
+        // hal.console->printf_P(PSTR("cal=%.2f %.2f %.2f\n"), cal[0], cal[1], cal[2]);
+
+        // we throw away the first two samples as the compass may
+        // still be changing its state from the application of the
+        // strap excitation. After that we accept values in a
+        // reasonable range
+        if (numAttempts > 2 &&
+            cal[0] > 0.7f && cal[0] < 1.35f &&
+            cal[1] > 0.7f && cal[1] < 1.35f &&
+            cal[2] > 0.7f && cal[2] < 1.35f) {
+            // hal.console->printf_P(PSTR("cal=%.2f %.2f %.2f good\n"), cal[0], cal[1], cal[2]);
             good_count++;
             calibration[0] += cal[0];
             calibration[1] += cal[1];
@@ -263,6 +307,17 @@ AP_Compass_HMC5843::init()
     }
 
     if (good_count >= 5) {
+        /*
+          The use of gain_multiple below is incorrect, as the gain
+          difference between 2.5Ga mode and 1Ga mode is already taken
+          into account by the expected_x and expected_yz values.  We
+          are not going to fix it however as it would mean all
+          APM1/APM2 users redoing their compass calibration. The
+          impact is that the values we report on APM1/APM2 are lower
+          than they should be (by a multiple of about 0.6). This
+          doesn't have any impact other than the learned compass
+          offsets
+         */
         calibration[0] = calibration[0] * gain_multiple / good_count;
         calibration[1] = calibration[1] * gain_multiple / good_count;
         calibration[2] = calibration[2] * gain_multiple / good_count;
@@ -277,91 +332,72 @@ AP_Compass_HMC5843::init()
     // leave test mode
     if (!re_initialise()) {
         _i2c_sem->give();
+        hal.scheduler->resume_timer_procs();
         return false;
     }
 
     _i2c_sem->give();
+    hal.scheduler->resume_timer_procs();
     _initialised = true;
 
 	// perform an initial read
-	healthy = true;
 	read();
+
+#if 0
+    hal.console->printf_P(PSTR("CalX: %.2f CalY: %.2f CalZ: %.2f\n"), 
+                          calibration[0], calibration[1], calibration[2]);
+#endif
+
+    if (success) {
+        // register the compass instance in the frontend
+        _compass_instance = register_compass();
+        set_dev_id(_compass_instance, _product_id);
+    }
 
     return success;
 }
 
 // Read Sensor data
-bool AP_Compass_HMC5843::read()
+void AP_Compass_HMC5843::read()
 {
     if (!_initialised) {
         // someone has tried to enable a compass for the first time
         // mid-flight .... we can't do that yet (especially as we won't
         // have the right orientation!)
-        return false;
+        return;
     }
-    if (!healthy) {
+    if (_retry_time != 0) {
         if (hal.scheduler->millis() < _retry_time) {
-            return false;
+            return;
         }
         if (!re_initialise()) {
             _retry_time = hal.scheduler->millis() + 1000;
 			hal.i2c->setHighSpeed(false);
-            return false;
+            return;
         }
     }
 
 	if (_accum_count == 0) {
 	   accumulate();
-	   if (!healthy || _accum_count == 0) {
-		  // try again in 1 second, and set I2c clock speed slower
-		  _retry_time = hal.scheduler->millis() + 1000;
+       if (_retry_time != 0) {
 		  hal.i2c->setHighSpeed(false);
-		  return false;
+		  return;
 	   }
 	}
 
-	mag_x = _mag_x_accum * calibration[0] / _accum_count;
-	mag_y = _mag_y_accum * calibration[1] / _accum_count;
-	mag_z = _mag_z_accum * calibration[2] / _accum_count;
+    Vector3f field(_mag_x_accum * calibration[0],
+                   _mag_y_accum * calibration[1],
+                   _mag_z_accum * calibration[2]);
+    field /= _accum_count;
+
 	_accum_count = 0;
 	_mag_x_accum = _mag_y_accum = _mag_z_accum = 0;
 
-    last_update = hal.scheduler->micros(); // record time of update
-
     // rotate to the desired orientation
-    Vector3f rot_mag = Vector3f(mag_x,mag_y,mag_z);
-    if (product_id == AP_COMPASS_TYPE_HMC5883L) {
-        rot_mag.rotate(ROTATION_YAW_90);
+    if (_product_id == AP_COMPASS_TYPE_HMC5883L) {
+        field.rotate(ROTATION_YAW_90);
     }
 
-    // apply default board orientation for this compass type. This is
-    // a noop on most boards
-    rot_mag.rotate(MAG_BOARD_ORIENTATION);
-
-    // add user selectable orientation
-    rot_mag.rotate((enum Rotation)_orientation.get());
-
-    if (!_external) {
-        // and add in AHRS_ORIENTATION setting if not an external compass
-        rot_mag.rotate(_board_orientation);
-    }
-
-    rot_mag += _offset.get();
-
-    // apply motor compensation
-    if(_motor_comp_type != AP_COMPASS_MOT_COMP_DISABLED && _thr_or_curr != 0.0f) {
-        _motor_offset = _motor_compensation.get() * _thr_or_curr;
-        rot_mag += _motor_offset;
-    }else{
-        _motor_offset.x = 0;
-        _motor_offset.y = 0;
-        _motor_offset.z = 0;
-    }
-
-    mag_x = rot_mag.x;
-    mag_y = rot_mag.y;
-    mag_z = rot_mag.z;
-    healthy = true;
-
-    return true;
+    publish_field(field, _compass_instance);
+    _retry_time = 0;
 }

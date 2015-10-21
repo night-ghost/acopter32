@@ -1,16 +1,19 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
+#include <AP_HAL/AP_HAL.h>
 #include "AP_L1_Control.h"
+
+extern const AP_HAL::HAL& hal;
 
 // table of user settable parameters
 const AP_Param::GroupInfo AP_L1_Control::var_info[] PROGMEM = {
     // @Param: PERIOD
     // @DisplayName: L1 control period
-    // @Description: Period in seconds of L1 tracking loop. This needs to be larger for less responsive airframes. The default of 30 is very conservative, and for most RC aircraft will lead to slow and lazy turns. For smaller more agile aircraft a value closer to 20 is appropriate. When tuning, change this value in small increments, as a value that is much too small (say 5 or 10 below the right value) can lead to very radical turns, and a risk of stalling.
+    // @Description: Period in seconds of L1 tracking loop. This parameter is the primary control for agressiveness of turns in auto mode. This needs to be larger for less responsive airframes. The default of 20 is quite conservative, but for most RC aircraft will lead to reasonable flight. For smaller more agile aircraft a value closer to 15 is appropriate, or even as low as 10 for some very agile aircraft. When tuning, change this value in small increments, as a value that is much too small (say 5 or 10 below the right value) can lead to very radical turns, and a risk of stalling.
 	// @Units: seconds
 	// @Range: 1-60
 	// @Increment: 1
-    AP_GROUPINFO("PERIOD",    0, AP_L1_Control, _L1_period, 25),
+    AP_GROUPINFO("PERIOD",    0, AP_L1_Control, _L1_period, 20),
 	
     // @Param: DAMPING
     // @DisplayName: L1 control damping ratio
@@ -38,7 +41,7 @@ const AP_Param::GroupInfo AP_L1_Control::var_info[] PROGMEM = {
 int32_t AP_L1_Control::nav_roll_cd(void) const
 {
 	float ret;	
-	ret = degrees(atanf(_latAccDem * 0.101972f) * 100.0f); // 0.101972 = 1/9.81
+	ret = cosf(_ahrs.pitch)*degrees(atanf(_latAccDem * 0.101972f) * 100.0f); // 0.101972 = 1/9.81
 	ret = constrain_float(ret, -9000, 9000);
 	return ret;
 }
@@ -64,13 +67,34 @@ int32_t AP_L1_Control::bearing_error_cd(void) const
 
 int32_t AP_L1_Control::target_bearing_cd(void) const
 {
-	return _target_bearing_cd;
+	return wrap_180_cd(_target_bearing_cd);
 }
 
+/*
+  this is the turn distance assuming a 90 degree turn
+ */
 float AP_L1_Control::turn_distance(float wp_radius) const
 {
     wp_radius *= sq(_ahrs.get_EAS2TAS());
 	return min(wp_radius, _L1_dist);
+}
+
+/*
+  this approximates the turn distance for a given turn angle. If the
+  turn_angle is > 90 then a 90 degree turn distance is used, otherwise
+  the turn distance is reduced linearly. 
+  This function allows straight ahead mission legs to avoid thinking
+  they have reached the waypoint early, which makes things like camera
+  trigger and ball drop at exact positions under mission control much easier
+ */
+float AP_L1_Control::turn_distance(float wp_radius, float turn_angle) const
+{
+    float distance_90 = turn_distance(wp_radius);
+    turn_angle = fabsf(turn_angle);
+    if (turn_angle >= 90) {
+        return distance_90;
+    }
+    return distance_90 * turn_angle / 90.0f;
 }
 
 bool AP_L1_Control::reached_loiter_target(void)
@@ -81,6 +105,26 @@ bool AP_L1_Control::reached_loiter_target(void)
 float AP_L1_Control::crosstrack_error(void) const
 {
 	return _crosstrack_error;
+}
+
+/**
+   prevent indecision in our turning by using our previous turn
+   decision if we are in a narrow angle band pointing away from the
+   target and the turn angle has changed sign
+ */
+void AP_L1_Control::_prevent_indecision(float &Nu)
+{
+    const float Nu_limit = 0.9f*M_PI_F;
+    if (fabsf(Nu) > Nu_limit &&
+        fabsf(_last_Nu) > Nu_limit &&
+        fabsf(wrap_180_cd(_target_bearing_cd - _ahrs.yaw_sensor)) > 12000 &&
+        Nu * _last_Nu < 0.0f) {
+        // we are moving away from the target waypoint and pointing
+        // away from the waypoint (not flying backwards). The sign
+        // of Nu has also changed, which means we are
+        // oscillating in our decision about which way to go
+        Nu = _last_Nu;
+    }
 }
 
 // update L1 control for waypoint navigation
@@ -100,11 +144,6 @@ void AP_L1_Control::update_waypoint(const struct Location &prev_WP, const struct
     _ahrs.get_position(_current_loc);
 
 	Vector2f _groundspeed_vector = _ahrs.groundspeed_vector();
-
-    // update the position for lag. This helps especially for rovers
-    // where waypoints may be very close together
-    Vector2f lag_offset = _groundspeed_vector * _ahrs.get_position_lag();
-    location_offset(_current_loc, lag_offset.x, lag_offset.y);
 
 	// update _target_bearing_cd
 	_target_bearing_cd = get_bearing_cd(_current_loc, next_WP);
@@ -130,6 +169,9 @@ void AP_L1_Control::update_waypoint(const struct Location &prev_WP, const struct
 	// if too small
 	if (AB.length() < 1.0e-6f) {
 		AB = location_diff(_current_loc, next_WP);
+        if (AB.length() < 1.0e-6f) {
+            AB = Vector2f(cosf(_ahrs.yaw), sinf(_ahrs.yaw));
+        }
 	}
 	AB.normalize();
 
@@ -144,15 +186,15 @@ void AP_L1_Control::update_waypoint(const struct Location &prev_WP, const struct
 		//Otherwise do normal L1 guidance
 	float WP_A_dist = A_air.length();
 	float alongTrackDist = A_air * AB;
-	if (WP_A_dist > _L1_dist && alongTrackDist/max(WP_A_dist, 1.0f) < -0.7071f) {
-
+	if (WP_A_dist > _L1_dist && alongTrackDist/max(WP_A_dist, 1.0f) < -0.7071f) 
+    {
 		//Calc Nu to fly To WP A
 		Vector2f A_air_unit = (A_air).normalized(); // Unit vector from WP A to aircraft
 		xtrackVel = _groundspeed_vector % (-A_air_unit); // Velocity across line
 		ltrackVel = _groundspeed_vector * (-A_air_unit); // Velocity along line
 		Nu = atan2f(xtrackVel,ltrackVel);
 		_nav_bearing = atan2f(-A_air_unit.y , -A_air_unit.x); // bearing (radians) from AC to L1 point
-		
+
 	} else { //Calc Nu to fly along AB line
 			
 		//Calculate Nu2 angle (angle of velocity vector relative to line connecting waypoints)
@@ -168,6 +210,9 @@ void AP_L1_Control::update_waypoint(const struct Location &prev_WP, const struct
 		Nu = Nu1 + Nu2;
 		_nav_bearing = atan2f(AB.y, AB.x) + Nu1; // bearing (radians) from AC to L1 point		
 	}	
+
+    _prevent_indecision(Nu);
+    _last_Nu = Nu;
 			
 	//Limit Nu to +-pi
 	Nu = constrain_float(Nu, -1.5708f, +1.5708f);
@@ -201,11 +246,6 @@ void AP_L1_Control::update_loiter(const struct Location &center_WP, float radius
 
 	Vector2f _groundspeed_vector = _ahrs.groundspeed_vector();
 
-    // update the position for lag. This helps especially for rovers
-    // where waypoints may be very close together
-    Vector2f lag_offset = _groundspeed_vector * _ahrs.get_position_lag();
-    location_offset(_current_loc, lag_offset.x, lag_offset.y);
-
 	//Calculate groundspeed
 	float groundSpeed = max(_groundspeed_vector.length() , 1.0f);
 
@@ -221,15 +261,31 @@ void AP_L1_Control::update_loiter(const struct Location &center_WP, float radius
 
 	//Calculate the NE position of the aircraft relative to WP A
     Vector2f A_air = location_diff(center_WP, _current_loc);
-	
-    //Calculate the unit vector from WP A to aircraft
-    Vector2f A_air_unit = A_air.normalized();
+
+    // Calculate the unit vector from WP A to aircraft
+    // protect against being on the waypoint and having zero velocity
+    // if too close to the waypoint, use the velocity vector
+    // if the velocity vector is too small, use the heading vector
+    Vector2f A_air_unit;
+    if (A_air.length() > 0.1f) {
+        A_air_unit = A_air.normalized();
+    } else {
+        if (_groundspeed_vector.length() < 0.1f) {
+            A_air_unit = Vector2f(cosf(_ahrs.yaw), sinf(_ahrs.yaw));
+        } else {
+            A_air_unit = _groundspeed_vector.normalized();
+        }
+    }
 
 	//Calculate Nu to capture center_WP
 	float xtrackVelCap = A_air_unit % _groundspeed_vector; // Velocity across line - perpendicular to radial inbound to WP
 	float ltrackVelCap = - (_groundspeed_vector * A_air_unit); // Velocity along line - radial inbound to WP
 	float Nu = atan2f(xtrackVelCap,ltrackVelCap);
-	Nu = constrain_float(Nu, -1.5708f, +1.5708f); //Limit Nu to +- Pi/2
+
+    _prevent_indecision(Nu);
+    _last_Nu = Nu;
+
+	Nu = constrain_float(Nu, -M_PI_2, M_PI_2); //Limit Nu to +- Pi/2
 
 	//Calculate lat accln demand to capture center_WP (use L1 guidance law)
 	float latAccDemCap = K_L1 * groundSpeed * groundSpeed / _L1_dist * sinf(Nu);
@@ -241,14 +297,14 @@ void AP_L1_Control::update_loiter(const struct Location &center_WP, float radius
 	// keep crosstrack error for reporting
 	_crosstrack_error = xtrackErrCirc;
 	
-	//Calculate PD control correction to circle waypoint
+	//Calculate PD control correction to circle waypoint_ahrs.roll
 	float latAccDemCircPD = (xtrackErrCirc * Kx + xtrackVelCirc * Kv);
 	
 	//Calculate tangential velocity
 	float velTangent = xtrackVelCap * float(loiter_direction);
 	
     //Prevent PD demand from turning the wrong way by limiting the command when flying the wrong way
-    if ( velTangent < 0.0f ) {
+    if (ltrackVelCap < 0.0f && velTangent < 0.0f) {
         latAccDemCircPD =  max(latAccDemCircPD, 0.0f);
 	}
 	
@@ -258,9 +314,10 @@ void AP_L1_Control::update_loiter(const struct Location &center_WP, float radius
 	//Sum PD control and centripetal acceleration to calculate lateral manoeuvre demand
 	float latAccDemCirc = loiter_direction * (latAccDemCircPD + latAccDemCircCtr);
 	
-	// Perform switchover between 'capture' and 'circle' modes at the point where the commands cross over to achieve a seamless transfer
+	// Perform switchover between 'capture' and 'circle' modes at the
+	// point where the commands cross over to achieve a seamless transfer
 	// Only fly 'capture' mode if outside the circle
-	if ((latAccDemCap < latAccDemCirc && loiter_direction > 0 && xtrackErrCirc > 0.0f) | (latAccDemCap > latAccDemCirc && loiter_direction < 0 && xtrackErrCirc > 0.0f)) {
+	if (xtrackErrCirc > 0.0f && loiter_direction * latAccDemCap < loiter_direction * latAccDemCirc) {
 		_latAccDem = latAccDemCap;
 		_WPcircle = false;
 		_bearing_error = Nu; // angle between demanded and achieved velocity vector, +ve to left of track
@@ -309,7 +366,7 @@ void AP_L1_Control::update_heading_hold(int32_t navigation_heading_cd)
 	_bearing_error = Nu; // bearing error angle (radians), +ve to left of track
 
 	// Limit Nu to +-pi
-	Nu = constrain_float(Nu, -1.5708f, +1.5708f);
+	Nu = constrain_float(Nu, -M_PI_2, M_PI_2);
 	_latAccDem = 2.0f*sinf(Nu)*VomegaA;
 }
 

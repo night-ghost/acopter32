@@ -1,44 +1,42 @@
-/* -*- Mode: C++; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/*
- * Storage.h --- AP_HAL_VRBRAIN storage driver.
- *
- * Copyright (C) 2013, Virtualrobotix.com Roberto Navoni , Emile 
- * All Rights Reserved.
- *
- * This software is released under the "BSD3" license.  Read the file
- * "LICENSE" for more information.
- *
- * Written by Roberto Navoni  <info@virtualrobotix.com>, 11 January 2013
- */
+
 
 #ifndef __AP_HAL_VRBRAIN_STORAGE_H__
 #define __AP_HAL_VRBRAIN_STORAGE_H__
 
-#include <AP_HAL_VRBRAIN.h>
-#include <i2c.h>
-#include <hal.h>
+#include <AP_HAL/AP_HAL.h>
+#include "AP_HAL_VRBRAIN_Namespace.h"
+#include <systemlib/perf_counter.h>
 
-#define MC24C64		//Defines the EEPROM MC24C64
-#define EEPROM_ADDRESS	0xA0
+#define VRBRAIN_STORAGE_SIZE HAL_STORAGE_SIZE
+#define VRBRAIN_STORAGE_MAX_WRITE 512
+#define VRBRAIN_STORAGE_LINE_SHIFT 9
+#define VRBRAIN_STORAGE_LINE_SIZE (1<<VRBRAIN_STORAGE_LINE_SHIFT)
+#define VRBRAIN_STORAGE_NUM_LINES (VRBRAIN_STORAGE_SIZE/VRBRAIN_STORAGE_LINE_SIZE)
 
-#define EEPROM_PAGE_SIZE	(uint32_t)0x10000
-#define EEPROM_START_ADDRESS	0x00
-
-class VRBRAIN::VRBRAINStorage : public AP_HAL::Storage
-{
+class VRBRAIN::VRBRAINStorage : public AP_HAL::Storage {
 public:
-  VRBRAINStorage(){};
-  void init(void* machtnichts);
-  uint8_t  read_byte(uint16_t src);
-  uint16_t read_word(uint16_t src);
-  uint32_t read_dword(uint16_t src);
-  void     read_block(void *dst, uint16_t src, size_t n);
+	VRBRAINStorage();
 
-  void write_byte(uint16_t dst, uint8_t value);
-  void write_word(uint16_t dst, uint16_t value);
-  void write_dword(uint16_t dst, uint32_t value);
-  void write_block(uint16_t dst, const void* src, size_t n);
+    void init(void* machtnichts) {}
+    void read_block(void *dst, uint16_t src, size_t n);
+    void write_block(uint16_t dst, const void* src, size_t n);
 
+    void _timer_tick(void);
+
+private:
+    int _fd;
+    volatile bool _initialised;
+    void _storage_create(void);
+    void _storage_open(void);
+    void _mark_dirty(uint16_t loc, uint16_t length);
+    uint8_t _buffer[VRBRAIN_STORAGE_SIZE] __attribute__((aligned(4)));
+    volatile uint32_t _dirty_mask;
+    perf_counter_t  _perf_storage;
+    perf_counter_t  _perf_errors;
+    bool _have_mtd;
+    void _upgrade_to_mtd(void);
+    uint32_t _mtd_signature(void);
+    void _mtd_write_signature(void);
 };
 
 #endif // __AP_HAL_VRBRAIN_STORAGE_H__

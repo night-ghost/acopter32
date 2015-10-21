@@ -1,0 +1,41 @@
+--- libraries/DataFlash/DataFlash_Block.h	2014-04-15 11:44:17.000000000 +0600
++++ libraries/DataFlash/DataFlash_Block.h	2014-01-14 12:39:42.000000000 +0600
+@@ -12,9 +12,6 @@
+ class DataFlash_Block : public DataFlash_Class
+ {
+ public:
+-    uint16_t df_eeStartPage;
+-    uint16_t df_eeNumPages;
+-
+     // initialisation
+     virtual void Init(void) = 0;
+     virtual bool CardInserted(void) = 0;
+@@ -62,11 +59,15 @@ private:
+     uint16_t df_FilePage;
+     bool log_write_started;
+ 
+-    /*functions implemented by the board specific backends*/
++    /*
++      functions implemented by the board specific backends
++     */
+ #if CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
+     virtual void WaitReady() = 0;
++    virtual uint8_t ReadStatus() = 0;
+     virtual void Flash_Jedec_EraseSector(uint32_t chip_offset) = 0;
+-    virtual void BlockWrite(uint32_t IntPageAdr, const void *pHeader, uint8_t hdr_size, const void *pBuffer, uint16_t size) = 0;
++    virtual void BufferToPage (uint32_t IntPageAdr) = 0;
++    virtual void BlockWrite(uint32_t BufferIdx, const void *pHeader, uint8_t hdr_size, const void *pBuffer, uint16_t size) = 0;
+     virtual bool BlockRead(uint32_t IntPageAdr, void *pBuffer, uint16_t size) = 0;
+ #else
+     virtual void WaitReady() = 0;
+@@ -107,6 +108,10 @@ private:
+     uint16_t GetFilePage();
+     uint16_t GetFileNumber();
+ 
++    void _print_log_formats(uint8_t num_types, 
++                            const struct LogStructure *structure,
++                            AP_HAL::BetterStream *port);
++    
+ protected:
+     uint8_t df_manufacturer;
+     uint16_t df_device;

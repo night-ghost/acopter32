@@ -1,10 +1,10 @@
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AnalogIn.h"
 #include <adc.h>
 #include <boards.h>
 #include <gpio_hal.h>
-#include <GPIO.h>
+#include <AP_HAL_REVOMINI/GPIO.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -57,6 +57,8 @@ float REVOMINIAnalogSource::voltage_latest()
 {
     return (3.3f/4096.0f) * read_latest();
 }
+
+
 void REVOMINIAnalogSource::set_pin(uint8_t pin)
 {
     if(pin == _pin)
@@ -69,7 +71,10 @@ void REVOMINIAnalogSource::set_pin(uint8_t pin)
 }
 
 
-REVOMINIAnalogIn::REVOMINIAnalogIn()
+REVOMINIAnalogIn::REVOMINIAnalogIn() : 
+    _board_voltage(0),
+    _servorail_voltage(0),
+    _power_flags(0)
 {}
 
 void REVOMINIAnalogIn::init(void* machtnichts)

@@ -3,7 +3,7 @@
 #define __AP_HAL_REVOMINI_H__
 
 /* Your layer exports should depend on AP_HAL.h ONLY. */
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 /**
  * Umbrella header for AP_HAL_REVOMINI module.
@@ -30,7 +30,7 @@
 #include "HAL_REVOMINI_Class.h"
 #include "AP_HAL_REVOMINI_Main.h"
 
-#include <DataFlash.h>
+#include <DataFlash/DataFlash.h>
 //extern  DataFlash_REVOMINI DataFlash;
 
 #endif //__AP_HAL_REVOMINI_H__

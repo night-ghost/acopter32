@@ -3,167 +3,122 @@
 #ifndef __AP_INERTIALNAV_H__
 #define __AP_INERTIALNAV_H__
 
-#include <AP_AHRS.h>
-#include <AP_InertialSensor.h>          // ArduPilot Mega IMU Library
-#include <AP_Baro.h>                    // ArduPilot Mega Barometer Library
-#include <AP_Buffer.h>                  // FIFO buffer library
-#include <AP_GPS_Glitch.h>              // GPS Glitch detection library
-
-#define AP_INTERTIALNAV_TC_XY   2.5f // default time constant for complementary filter's X & Y axis
-#define AP_INTERTIALNAV_TC_Z    5.0f // default time constant for complementary filter's Z axis
-
-// #defines to control how often historical accel based positions are saved
-// so they can later be compared to laggy gps readings
-#define AP_INTERTIALNAV_SAVE_POS_AFTER_ITERATIONS   10
-#define AP_INTERTIALNAV_GPS_LAG_IN_10HZ_INCREMENTS  4       // must not be larger than size of _hist_position_estimate_x and _hist_position_estimate_y
-#define AP_INTERTIALNAV_GPS_TIMEOUT_MS              300     // timeout after which position error from GPS will fall to zero
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_InertialSensor/AP_InertialSensor.h>          // ArduPilot Mega IMU Library
+#include <AP_Baro/AP_Baro.h>                    // ArduPilot Mega Barometer Library
+#include <AP_Buffer/AP_Buffer.h>                  // FIFO buffer library
+#include <AP_NavEKF/AP_Nav_Common.h> // definitions shared by inertial and ekf nav filters
 
 /*
- * AP_InertialNav is an attempt to use accelerometers to augment other sensors to improve altitud e position hold
+ * AP_InertialNav blends accelerometer data with gps and barometer data to improve altitude and position hold.
+ *
+ * Most of the functions have to be called at 100Hz. (see defines above)
+ *
+ * The accelerometer values are integrated over time to approximate velocity and position.
+ * The inaccurcy of these estimates grows over time due to noisy sensor data.
+ * To improve the accuracy, baro and gps readings are used:
+ *      An error value is calculated as the difference between the sensor's measurement and the last position estimation.
+ *   	This value is weighted with a gain factor and incorporated into the new estimation
+ *
+ * Special thanks to Tony Lambregts (FAA) for advice which contributed to the development of this filter.
+ *
  */
 class AP_InertialNav
 {
 public:
 
     // Constructor
-    AP_InertialNav( AP_AHRS* ahrs, AP_InertialSensor* ins, AP_Baro* baro, GPS*& gps, GPS_Glitch& gps_glitch ) :
-        _ahrs(ahrs),
-        _ins(ins),
-        _baro(baro),
-        _gps(gps),
-        _xy_enabled(false),
-        _gps_last_update(0),
-        _gps_last_time(0),
-        _baro_last_update(0),
-        _glitch_detector(gps_glitch)
-        {
-            AP_Param::setup_object_defaults(this, var_info);
-        }
+    AP_InertialNav() {}
 
-    // Initialisation
-    void        init();
+    /**
+     * update - updates velocity and position estimates using latest info from accelerometers
+     * augmented with gps and baro readings
+     *
+     * @param dt : time since last update in seconds
+     */
+    virtual void update(float dt) = 0;
 
-    // update - updates velocities and positions using latest info from accelerometers;
-    void        update(float dt);
+    /**
+     * get_filter_status : returns filter status as a series of flags
+     */
+    virtual nav_filter_status get_filter_status() const = 0;
+
+    /**
+     * get_origin - returns the inertial navigation origin in lat/lon/alt
+     *
+     * @return origin Location
+     */
+    virtual struct Location get_origin() const = 0;
 
     //
     // XY Axis specific methods
     //
 
-    // set time constant - set timeconstant used by complementary filter
-    void        set_time_constant_xy( float time_constant_in_seconds );
+    /**
+     * get_position - returns the current position relative to the home location in cm.
+     *
+     * @return
+     */
+    virtual const Vector3f&    get_position() const = 0;
 
-    // altitude_ok, position_ok - true if inertial based altitude and position can be trusted
-    bool        position_ok() const;
+    /**
+     * get_llh - updates the provided location with the latest calculated location including absolute altitude
+     *  returns true on success (i.e. the EKF knows it's latest position), false on failure
+     */
+    virtual bool get_location(struct Location &loc) const = 0;
 
-    // check_gps - check if new gps readings have arrived and use them to correct position estimates
-    void        check_gps();
+    /**
+     * get_latitude - returns the latitude of the current position estimation in 100 nano degrees (i.e. degree value multiplied by 10,000,000)
+     * @return
+     */
+    virtual int32_t     get_latitude() const = 0;
 
-    // correct_with_gps - modifies accelerometer offsets using gps.
-    void        correct_with_gps(uint32_t now, int32_t lon, int32_t lat);
+    /**
+     * get_longitude - returns the longitude of the current position estimation in 100 nano degrees (i.e. degree value multiplied by 10,000,000)
+     * @return
+     */
+    virtual int32_t     get_longitude() const = 0;
 
-    // get_position - returns current position from home in cm
-    Vector3f    get_position() const { return _position_base + _position_correction; }
+    /**
+     * get_velocity - returns the current velocity in cm/s
+     *
+     * @return velocity vector:
+     *      		.x : latitude  velocity in cm/s
+     * 				.y : longitude velocity in cm/s
+     * 				.z : vertical  velocity in cm/s
+     */
+    virtual const Vector3f&    get_velocity() const = 0;
 
-    // get latitude & longitude positions
-    int32_t     get_latitude() const;
-    int32_t     get_longitude() const;
-
-    // set_home_position - all internal calculations are recorded as the distances from this point
-    void        set_home_position(int32_t lon, int32_t lat);
-
-    // get latitude & longitude positions from base location (in cm)
-    float       get_latitude_diff() const;
-    float       get_longitude_diff() const;
-    
-    // get velocity in latitude & longitude directions (in cm/s)
-    float       get_latitude_velocity() const;
-    float       get_longitude_velocity() const;
-
-    // get_velocity - returns current velocity in cm/s
-    Vector3f    get_velocity() const { return _velocity; }
-
-    // set velocity in latitude & longitude directions (in cm/s)
-    void        set_velocity_xy(float x, float y);
+    /**
+     * get_velocity_xy - returns the current horizontal velocity in cm/s
+     *
+     * @returns the current horizontal velocity in cm/s
+     */
+    virtual float get_velocity_xy() const = 0;
 
     //
     // Z Axis methods
     //
 
-    // set time constant - set timeconstant used by complementary filter
-    void        set_time_constant_z( float time_constant_in_seconds );
+    /**
+     * get_altitude - get latest altitude estimate in cm above the
+     * reference position
+     * @return
+     */
+    virtual float       get_altitude() const = 0;
 
-    // altitude_ok, position_ok - true if inertial based altitude and position can be trusted
-    bool        altitude_ok() const { return true; }
-
-    // check_baro - check if new baro readings have arrived and use them to correct vertical accelerometer offsets
-    void        check_baro();
-
-    // correct_with_baro - modifies accelerometer offsets using barometer.  dt is time since last baro reading
-    void        correct_with_baro(float baro_alt, float dt);
-
-    // get_altitude - get latest altitude estimate in cm
-    float       get_altitude() const { return _position_base.z + _position_correction.z; }
-    void        set_altitude( float new_altitude);
-
-    // get_velocity_z - get latest climb rate (in cm/s)
-    float       get_velocity_z() const { return _velocity.z; }
-    void        set_velocity_z( float new_velocity );
-
-    // class level parameters
-    static const struct AP_Param::GroupInfo var_info[];
-
-    // public variables
-    Vector3f                accel_correction_ef;        // earth frame accelerometer corrections. here for logging purposes only
-
-    // set_position_xy - sets inertial navigation position to given xy coordinates from home
-    void            set_position_xy(float pos_x, float pos_y);
-
-protected:
-
-    void                    update_gains();             // update_gains - update gains from time constant (given in seconds)
-
-    // structure for holding flags
-    struct InertialNav_flags {
-        uint8_t gps_glitching   : 1;                    // 1 if glitch detector was previously indicating a gps glitch
-    } _flags;
-
-    AP_AHRS*                _ahrs;                      // pointer to ahrs object
-    AP_InertialSensor*      _ins;                       // pointer to inertial sensor
-    AP_Baro*                _baro;                      // pointer to barometer
-    GPS*&                   _gps;                       // pointer to gps
-
-    // XY Axis specific variables
-    bool                    _xy_enabled;                // xy position estimates enabled
-    AP_Float                _time_constant_xy;          // time constant for horizontal corrections
-    float                   _k1_xy;                     // gain for horizontal position correction
-    float                   _k2_xy;                     // gain for horizontal velocity correction
-    float                   _k3_xy;                     // gain for horizontal accelerometer offset correction
-    uint32_t                _gps_last_update;           // system time of last gps update
-    uint32_t                _gps_last_time;             // time of last gps update according to the gps itself
-    uint8_t                 _historic_xy_counter;       // counter used to slow saving of position estimates for later comparison to gps
-    AP_BufferFloat_Size5    _hist_position_estimate_x;  // buffer of historic accel based position to account for lag
-    AP_BufferFloat_Size5    _hist_position_estimate_y;  // buffer of historic accel based position to account for lag
-    int32_t                 _base_lat;                  // base latitude
-    int32_t                 _base_lon;                  // base longitude
-    float                   _lon_to_m_scaling;          // conversion of longitude to meters
-    
-    // Z Axis specific variables
-    AP_Float                _time_constant_z;           // time constant for vertical corrections
-    float                   _k1_z;                      // gain for vertical position correction
-    float                   _k2_z;                      // gain for vertical velocity correction
-    float                   _k3_z;                      // gain for vertical accelerometer offset correction
-    uint32_t                _baro_last_update;           // time of last barometer update
-    AP_BufferFloat_Size15   _hist_position_estimate_z;  // buffer of historic accel based altitudes to account for lag
-
-    // general variables
-    Vector3f                _position_base;             // position estimate
-    Vector3f                _position_correction;       // sum of correction to _comp_h from delayed 1st order samples    
-    Vector3f                _velocity;                  // latest velocity estimate (integrated from accelerometer values)
-    Vector3f                _position_error;
-
-    // GPS Glitch detector
-    GPS_Glitch&             _glitch_detector;
+    /**
+     * get_velocity_z - returns the current climbrate.
+     *
+     * @see get_velocity().z
+     *
+     * @return climbrate in cm/s (positive up)
+     */
+    virtual float       get_velocity_z() const = 0;
 };
+
+#if AP_AHRS_NAVEKF_AVAILABLE
+#include "AP_InertialNav_NavEKF.h"
+#endif
 
 #endif // __AP_INERTIALNAV_H__

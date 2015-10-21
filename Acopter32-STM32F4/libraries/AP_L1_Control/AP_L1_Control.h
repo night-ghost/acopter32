@@ -16,10 +16,10 @@
 #ifndef AP_L1_CONTROL_H
 #define AP_L1_CONTROL_H
 
-#include <AP_Math.h>
-#include <AP_AHRS.h>
-#include <AP_Param.h>
-#include <AP_Navigation.h>
+#include <AP_Math/AP_Math.h>
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_Param/AP_Param.h>
+#include <AP_Navigation/AP_Navigation.h>
 
 class AP_L1_Control : public AP_Navigation {
 public:
@@ -44,6 +44,7 @@ public:
 
 	int32_t target_bearing_cd(void) const;
 	float turn_distance(float wp_radius) const;
+	float turn_distance(float wp_radius, float turn_angle) const;
 	void update_waypoint(const struct Location &prev_WP, const struct Location &next_WP);
 	void update_loiter(const struct Location &center_WP, float radius, int8_t loiter_direction);
 	void update_heading_hold(int32_t navigation_heading_cd);
@@ -90,10 +91,15 @@ private:
 	AP_Float _L1_period;
 	// L1 tracking loop damping ratio
 	AP_Float _L1_damping;
-	
-	//Calculate the maximum of two floating point numbers
-	float _maxf(const float &num1, const float &num2) const;
 
+    // previous value of cross-track velocity
+    float _last_Nu;
+
+    // direction of last xtrack velocity - true positive
+    bool _xtrackVelPos;
+
+    // prevent indecision in waypoint tracking
+    void _prevent_indecision(float &Nu);
 };
 
 

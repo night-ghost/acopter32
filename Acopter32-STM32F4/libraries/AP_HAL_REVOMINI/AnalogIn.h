@@ -2,13 +2,14 @@
 #ifndef __AP_HAL_REVOMINI_ANALOGIN_H__
 #define __AP_HAL_REVOMINI_ANALOGIN_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 #include <hal.h>
 #include <adc.h>
 
 
 class REVOMINI::REVOMINIAnalogSource : public AP_HAL::AnalogSource {
 public:
+    friend class REVOMINI::REVOMINIAnalogIn;
     REVOMINIAnalogSource(int16_t pin, float initial_value);
     float read_average();
     float read_latest();
@@ -28,6 +29,13 @@ class REVOMINI::REVOMINIAnalogIn : public AP_HAL::AnalogIn {
 public:
     REVOMINIAnalogIn();
     void init(void* implspecific);
+    float board_voltage(void) { return _board_voltage; }
+    float servorail_voltage(void) { return _servorail_voltage; }
+    uint16_t power_status_flags(void) { return _power_flags; }
     AP_HAL::AnalogSource* channel(int16_t pin);
+private:
+    float _board_voltage;
+    float _servorail_voltage;
+    uint16_t _power_flags;
 };
 #endif // __AP_HAL_REVOMINI_ANALOGIN_H__

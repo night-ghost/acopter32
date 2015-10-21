@@ -7,15 +7,24 @@
  */
 
 #include "UARTDriver.h"
+#include "SPIUARTDriver.h"
 #include "I2CDriver.h"
 #include "SPIDriver.h"
 #include "AnalogIn.h"
+#include "AnalogIn_Navio.h"
 #include "Storage.h"
 #include "GPIO.h"
 #include "RCInput.h"
-#include "RCOutput.h"
+#include "RCInput_AioPRU.h"
+#include "RCInput_Navio.h"
+#include "RCOutput_PRU.h"
+#include "RCOutput_AioPRU.h"
+#include "RCOutput_Navio.h"
+#include "RCOutput_ZYNQ.h"
+#include "RCOutput_Bebop.h"
 #include "Semaphores.h"
 #include "Scheduler.h"
+#include "ToneAlarmDriver.h"
 #include "Util.h"
 
 #endif // __AP_HAL_LINUX_PRIVATE_H__

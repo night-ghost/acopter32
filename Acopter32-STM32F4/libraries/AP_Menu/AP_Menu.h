@@ -17,7 +17,7 @@
 #define __AP_MENU_H__
 
 #include <inttypes.h>
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 
 #define MENU_COMMANDLINE_MAX    32      ///< maximum input line length
 #define MENU_ARGS_MAX           3       ///< maximum number of arguments
@@ -55,7 +55,7 @@ public:
     ///						command, so that the same function can be used
     ///						to handle more than one command.
     ///
-    typedef int8_t (*func)(uint8_t argc, const struct arg *argv);
+    FUNCTOR_TYPEDEF(func, int8_t, uint8_t, const struct arg *);
 
 	static void set_port(AP_HAL::BetterStream *port) {
 		_port = port;
@@ -68,7 +68,7 @@ public:
     ///
     /// If this function returns false, the menu exits.
     ///
-    typedef bool (*preprompt)(void);
+    FUNCTOR_TYPEDEF(preprompt, bool);
 
     /// menu command description
     ///
@@ -89,7 +89,7 @@ public:
         /// The "?", "help" and "exit" commands are always defined, but
         /// can be overridden by explicit entries in the command array.
         ///
-        int8_t (*func)(uint8_t argc, const struct arg *argv);                   ///< callback function
+        FUNCTOR_DECLARE(func, int8_t, uint8_t, const struct arg *);
     };
 
     /// constructor
@@ -103,8 +103,16 @@ public:
     ///
     Menu(const char *prompt, const struct command *commands, uint8_t entries, preprompt ppfunc = 0);
 
+    /// set command line length limit
+    void set_limits(uint8_t commandline_max, uint8_t args_max);
+
     /// menu runner
     void        run(void);
+
+    /// check for new input on the port. Can be used
+    /// to allow for the menu to operate asynchronously
+    /// this will return true if the user asked to exit the menu
+    bool        check_input(void);
 
 private:
     /// Implements the default 'help' command.
@@ -123,9 +131,27 @@ private:
     const uint8_t           _entries;                                                   ///< size of the menu
     const preprompt         _ppfunc;                                                    ///< optional pre-prompt action
 
-    static char             _inbuf[MENU_COMMANDLINE_MAX];       ///< input buffer
-    static arg              _argv[MENU_ARGS_MAX + 1];                   ///< arguments
+    static char             *_inbuf;       ///< input buffer
+    static arg              *_argv;       ///< arguments
 
+    uint8_t                 _commandline_max;
+    uint8_t                 _args_max;
+
+    // allocate inbuf and args buffers
+    void _allocate_buffers(void);
+
+    // number of characters read so far from the port
+    uint8_t                 _input_len;
+
+    // check for next input character
+    bool                    _check_for_input(void);
+
+    // run one full entered command. 
+    // return true if the menu loop should exit
+    bool                    _run_command(bool prompt_on_enter);
+
+    void                    _display_prompt();
+    
 	// port to run on
 	static AP_HAL::BetterStream  *_port;
 };
@@ -142,10 +168,10 @@ private:
 ///
 #define MENU(name, prompt, commands)                                                    \
     static const char __menu_name__ ## name[] PROGMEM = prompt;      \
-    static Menu name(__menu_name__ ## name, commands, sizeof(commands) / sizeof(commands[0]))
+    static Menu name(__menu_name__ ## name, commands, ARRAY_SIZE(commands))
 
 #define MENU2(name, prompt, commands, preprompt)                                \
     static const char __menu_name__ ## name[] PROGMEM = prompt;      \
-    static Menu name(__menu_name__ ## name, commands, sizeof(commands) / sizeof(commands[0]), preprompt)
+    static Menu name(__menu_name__ ## name, commands, ARRAY_SIZE(commands), preprompt)
 
 #endif // __AP_COMMON_MENU_H__

@@ -26,7 +26,7 @@
 
 #include "HardwareTimer.h"
 #include "boards.h"             // for CYCLES_PER_MICROSECOND
-#include "AP_Math.h"
+#include "AP_Math/AP_Math.h"
 
 // TODO [0.1.0] Remove deprecated pieces
 

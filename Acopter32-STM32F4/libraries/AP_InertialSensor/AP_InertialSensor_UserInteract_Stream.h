@@ -2,7 +2,7 @@
 #ifndef __AP_INERTIAL_SENSOR_USER_INTERACT_STREAM_H__
 #define __AP_INERTIAL_SENSOR_USER_INTERACT_STREAM_H__
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #include "AP_InertialSensor_UserInteract.h"
 
 /**
@@ -14,7 +14,7 @@ public:
     AP_InertialSensor_UserInteractStream(AP_HAL::BetterStream *s) :
         _s(s) {}
 
-    uint8_t blocking_read();
+    bool blocking_read();
     void _printf_P(const prog_char *, ...);
 private:
     AP_HAL::BetterStream *_s;

@@ -19,6 +19,8 @@
   parameters needed by multiple libraries
  */
 
+#include <AP_Param/AP_Param.h>
+
 class AP_Vehicle {
 
 public:
@@ -30,11 +32,26 @@ public:
         AP_Int8 throttle_max;	
         AP_Int8 throttle_slewrate;
         AP_Int8 throttle_cruise;
+        AP_Int8 takeoff_throttle_max;
         AP_Int16 airspeed_min;
         AP_Int16 airspeed_max;
         AP_Int16 pitch_limit_max_cd;
         AP_Int16 pitch_limit_min_cd;        
+        AP_Int8  autotune_level;
+        AP_Int16 land_pitch_cd;
+        AP_Float land_flare_sec;
+        AP_Int8  stall_prevention;
+    };
+
+    /*
+      common parameters for multicopters
+     */
+    struct MultiCopter {
+        AP_Int16 angle_max;
     };
 };
+
+
+#include "AP_Vehicle_Type.h"
 
 #endif // AP_VEHICLE_H

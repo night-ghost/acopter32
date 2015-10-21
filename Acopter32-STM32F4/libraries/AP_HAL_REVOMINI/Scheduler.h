@@ -2,12 +2,12 @@
 #ifndef __AP_HAL_REVOMINI_SCHEDULER_H__
 #define __AP_HAL_REVOMINI_SCHEDULER_H__
 
-#include <AP_HAL_REVOMINI.h>
+#include <AP_HAL_REVOMINI/AP_HAL_REVOMINI.h>
 #include <delay.h>
 #include <systick.h>
 #include <boards.h>
 #include <timer.h>
-#include <AP_HAL.h>
+//#include <AP_HAL/AP_HAL.h>
 
 #define REVOMINI_SCHEDULER_MAX_TIMER_PROCS 10
 
@@ -19,6 +19,9 @@ public:
     void     delay(uint16_t ms);
     uint32_t millis();
     uint32_t micros();
+    uint64_t millis64();
+    uint64_t micros64();
+    
     void     delay_microseconds(uint16_t us);
     void     register_delay_callback(AP_HAL::Proc,
                 uint16_t min_time_ms);

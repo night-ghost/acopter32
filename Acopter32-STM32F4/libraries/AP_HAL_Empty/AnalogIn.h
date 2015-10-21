@@ -2,7 +2,7 @@
 #ifndef __AP_HAL_EMPTY_ANALOGIN_H__
 #define __AP_HAL_EMPTY_ANALOGIN_H__
 
-#include <AP_HAL_Empty.h>
+#include "AP_HAL_Empty.h"
 
 class Empty::EmptyAnalogSource : public AP_HAL::AnalogSource {
 public:
@@ -24,5 +24,6 @@ public:
     EmptyAnalogIn();
     void init(void* implspecific);
     AP_HAL::AnalogSource* channel(int16_t n);
+    float board_voltage(void);
 };
 #endif // __AP_HAL_EMPTY_ANALOGIN_H__

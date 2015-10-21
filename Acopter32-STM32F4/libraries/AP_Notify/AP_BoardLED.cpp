@@ -15,16 +15,22 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_Notify.h>
+#include "AP_Notify.h"
 
 extern const AP_HAL::HAL& hal;
 
-void AP_BoardLED::init(void)
+bool AP_BoardLED::init(void)
 {
     // setup the main LEDs as outputs
-    hal.gpio->pinMode(HAL_GPIO_A_LED_PIN, GPIO_OUTPUT);
-    hal.gpio->pinMode(HAL_GPIO_B_LED_PIN, GPIO_OUTPUT);
-    hal.gpio->pinMode(HAL_GPIO_C_LED_PIN, GPIO_OUTPUT);
+    hal.gpio->pinMode(HAL_GPIO_A_LED_PIN, HAL_GPIO_OUTPUT);
+    hal.gpio->pinMode(HAL_GPIO_B_LED_PIN, HAL_GPIO_OUTPUT);
+    hal.gpio->pinMode(HAL_GPIO_C_LED_PIN, HAL_GPIO_OUTPUT);
+
+    // turn all lights off
+    hal.gpio->write(HAL_GPIO_A_LED_PIN, HAL_GPIO_LED_OFF);
+    hal.gpio->write(HAL_GPIO_B_LED_PIN, HAL_GPIO_LED_OFF);
+    hal.gpio->write(HAL_GPIO_C_LED_PIN, HAL_GPIO_LED_OFF);
+    return true;
 }
 
 /*
@@ -79,6 +85,7 @@ void AP_BoardLED::update(void)
 
             default:
                 save_trim_counter = -1;
+                break;
         }
         return;
     }
@@ -88,7 +95,7 @@ void AP_BoardLED::update(void)
 	if (AP_Notify::flags.armed) {
         // red led solid
 //        hal.gpio->write(HAL_GPIO_A_LED_PIN, HAL_GPIO_LED_ON);
-	}else{
+    }else{
         if ((counter2 & 0x2) == 0) {
             arm_counter++;
         }
@@ -113,7 +120,7 @@ void AP_BoardLED::update(void)
         }else{
             // failed pre-arm checks so double flash
             switch(arm_counter) {
-            case 0:
+                case 0:
                 hal.gpio->write(HAL_GPIO_A_LED_PIN, HAL_GPIO_LED_ON);
                 break;
             case 1:
@@ -176,7 +183,7 @@ void AP_BoardLED::update(void)
             }
             break;
 
-        case 3:
+        default:
             // solid blue on gps lock
             hal.gpio->write(HAL_GPIO_C_LED_PIN, HAL_GPIO_LED_ON);
             break;        

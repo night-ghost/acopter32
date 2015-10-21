@@ -7,22 +7,25 @@ BUILDDIRS       += $(BUILD_PATH)/$(d)
 LIBRARY_INCLUDES += -I$(d)/common -I$(d)/include
 
 # Local flags
-CFLAGS_$(d) = -Wall -Werror
+CFLAGS_$(d) = -Wall
+# -Werror
+
+STM_DIR := AP_HAL_REVOMINI/hardware/hal
 
 # Local rules and targets
 cSRCS_$(d)   := 
-cSRCS_$(d)   += exti.c
-cSRCS_$(d)   += gpio_hal.c
-cSRCS_$(d)   += i2c.c
-cSRCS_$(d)   += spi.c
-cSRCS_$(d)   += syscalls.c
-cSRCS_$(d)   += systick.c
-cSRCS_$(d)   += timer.c
-cSRCS_$(d)   += usart.c
-cSRCS_$(d)   += adc.c
-cSRCS_$(d)   += stopwatch.c
-cSRCS_$(d)   += usb.c
-cSRCS_$(d)   += pwm_in.c
+cSRCS_$(d)   += $(STM_DIR)/exti.c
+cSRCS_$(d)   += $(STM_DIR)/gpio_hal.c
+cSRCS_$(d)   += $(STM_DIR)/i2c.c
+cSRCS_$(d)   += $(STM_DIR)/spi.c
+cSRCS_$(d)   += $(STM_DIR)/syscalls.c
+cSRCS_$(d)   += $(STM_DIR)/systick.c
+cSRCS_$(d)   += $(STM_DIR)/timer.c
+cSRCS_$(d)   += $(STM_DIR)/usart.c
+cSRCS_$(d)   += $(STM_DIR)/adc.c
+cSRCS_$(d)   += $(STM_DIR)/stopwatch.c
+cSRCS_$(d)   += $(STM_DIR)/usb.c
+cSRCS_$(d)   += $(STM_DIR)/pwm_in.c
 
 cppSRCS_$(d) := 
 
@@ -32,9 +35,9 @@ cFILES_$(d)   := $(cSRCS_$(d):%=$(d)/%)
 cppFILES_$(d) := $(cppSRCS_$(d):%=$(d)/%)
 sFILES_$(d)   := $(sSRCS_$(d):%=$(d)/%)
 
-OBJS_$(d)	:= $(cFILES_$(d):%.c=$(BUILD_PATH)/%.o)
-OBJS_$(d)	+= $(cppFILES_$(d):%.cpp=$(BUILD_PATH)/%.o)
-OBJS_$(d)	+= $(sFILES_$(d):%.s=$(BUILD_PATH)/%.o)
+OBJS_$(d)	:= $(cFILES_$(d):%.c=$(LIBRARIES_PATH)/%.o)
+OBJS_$(d)	+= $(cppFILES_$(d):%.cpp=$(LIBRARIES_PATH)/%.o)
+OBJS_$(d)	+= $(sFILES_$(d):%.s=$(LIBRARIES_PATH)/%.o)
 
 DEPS_$(d) 	:= $(OBJS_$(d):%.o=%.d)
 

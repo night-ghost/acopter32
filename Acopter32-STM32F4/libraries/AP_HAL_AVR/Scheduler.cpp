@@ -1,6 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-#include <AP_HAL.h>
+#include <AP_HAL/AP_HAL.h>
 #if (CONFIG_HAL_BOARD == HAL_BOARD_APM1 || CONFIG_HAL_BOARD == HAL_BOARD_APM2)
 
 #include <avr/io.h>
@@ -9,13 +9,15 @@
 
 #include "Scheduler.h"
 #include "utility/ISRRegistry.h"
+#include "memcheck.h"
 using namespace AP_HAL_AVR;
 
 extern const AP_HAL::HAL& hal;
 
 /* AVRScheduler timer interrupt period is controlled by TCNT2.
+ * 256-124 gives a 500Hz period
  * 256-62 gives a 1kHz period. */
-#define RESET_TCNT2_VALUE (256 - 62)
+volatile uint8_t AVRScheduler::_timer2_reset_value = (256 - 62);
 
 /* Static AVRScheduler variables: */
 AVRTimer AVRScheduler::_timer;
@@ -52,6 +54,8 @@ void AVRScheduler::init(void* _isrregistry) {
     
     /* Turn on global interrupt flag, AVR interupt system will start from this point */
     sei();
+
+    memcheck_init();
 }
 
 uint32_t AVRScheduler::micros() {
@@ -60,6 +64,24 @@ uint32_t AVRScheduler::micros() {
 
 uint32_t AVRScheduler::millis() {
     return _timer.millis();
+}
+
+/*
+  64 bit version of millis(). This wraps at 32 bits on AVR
+ */
+uint64_t AVRScheduler::millis64() {
+    return millis();
+}
+
+/*
+  64 bit version of micros(). This wraps when 32 bit millis() wraps
+ */
+uint64_t AVRScheduler::micros64() {
+    // this is slow, but solves the problem with logging uint64_t timestamps
+    uint64_t ret = millis();
+    ret *= 1000ULL;
+    ret += micros() % 1000UL;
+    return ret;
 }
 
 void AVRScheduler::delay_microseconds(uint16_t us) {
@@ -146,7 +168,7 @@ void AVRScheduler::_timer_isr_event() {
     // This approach also gives us a nice uniform spacing between
     // timer calls
 
-    TCNT2 = RESET_TCNT2_VALUE;
+    TCNT2 = _timer2_reset_value;
     sei();
     _run_timer_procs(true);
 }
@@ -175,7 +197,7 @@ void AVRScheduler::_run_timer_procs(bool called_from_isr) {
     if (!_timer_suspended) {
         // now call the timer based drivers
         for (int i = 0; i < _num_timer_procs; i++) {
-            if (_timer_proc[i] != NULL) {
+            if (_timer_proc[i]) {
                 _timer_proc[i]();
             }
         }

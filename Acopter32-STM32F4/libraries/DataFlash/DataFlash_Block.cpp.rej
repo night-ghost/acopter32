@@ -1,0 +1,47 @@
+--- libraries/DataFlash/DataFlash_Block.cpp	2014-04-15 11:44:17.000000000 +0600
++++ libraries/DataFlash/DataFlash_Block.cpp	2014-01-14 12:39:42.000000000 +0600
+@@ -4,24 +4,18 @@
+  */
+ 
+ #include <AP_HAL.h>
++#include "wirish.h"
+ #include <stm32f4xx.h>
+ 
+-#if CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
++// the last page holds the log format in first 4 bytes. Please change
++// this if (and only if!) the low level format changes
++#define DF_LOGGING_FORMAT    0x28122013
+ 
+ #include "DataFlash.h"
+ 
+ extern AP_HAL::HAL& hal;
+ 
+-/*
+- * TODO DRIVER NEED TO BE FIXED !!!
+- */
+-
+-// the last page holds the log format in first 4 bytes. Please change
+-// this if (and only if!) the low level format changes
+-#define DF_LOGGING_FORMAT    0x28122013
+-
+-#define dfEE_PAGESIZE   256
+-__IO uint8_t   dfEEDataNum;
++#if CONFIG_HAL_BOARD == HAL_BOARD_REVOMINI
+ 
+ // *** DATAFLASH PUBLIC FUNCTIONS ***
+ void DataFlash_Block::StartWrite(uint16_t PageAdr)
+@@ -239,14 +256,6 @@ bool DataFlash_Block::NeedErase(void)
+ 
+ #elif CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
+ 
+-#include "DataFlash.h"
+-
+-extern AP_HAL::HAL& hal;
+-
+-// the last page holds the log format in first 4 bytes. Please change
+-// this if (and only if!) the low level format changes
+-#define DF_LOGGING_FORMAT    0x28122013
+-
+ // *** DATAFLASH PUBLIC FUNCTIONS ***
+ void DataFlash_Block::StartWrite(uint16_t PageAdr)
+ {

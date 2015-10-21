@@ -113,19 +113,27 @@ Vector2<T> Vector2<T>::operator -(void) const
 template <typename T>
 bool Vector2<T>::operator ==(const Vector2<T> &v) const
 {
-    return (x==v.x && y==v.y);
+    return (is_equal(x,v.x) && is_equal(y,v.y));
 }
 
 template <typename T>
 bool Vector2<T>::operator !=(const Vector2<T> &v) const
 {
-    return (x!=v.x && y!=v.y);
+    return (!is_equal(x,v.x) || !is_equal(y,v.y));
 }
 
 template <typename T>
 float Vector2<T>::angle(const Vector2<T> &v2) const
 {
-    return acosf(((*this)*v2) / (this->length()*v2.length()));
+    float len = this->length() * v2.length();
+    if (len <= 0) {
+        return 0.0f;
+    }
+    float cosv = ((*this)*v2) / len;
+    if (fabsf(cosv) >= 1) {
+        return 0.0f;
+    }
+    return acosf(cosv);
 }
 
 // only define for float
